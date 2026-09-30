@@ -17,5 +17,12 @@ export {
 	type PosTheme,
 } from "./theme";
 export type * from "./types";
-export { PosTill, setPosPlatform, type PosApi, type PosPlatform } from "./ao";
-export type { BusinessConfig } from "./ao";
+/**
+ * ! The Appliance Outlet till is NOT re-exported here. It carries Mantine,
+ * ! cookies-next and moment with it, and re-exporting pulled all of that into
+ * ! every host that imports anything from this package - Rent Buddy's till
+ * ! shipped a second copy of Mantine it never rendered. Import it by its own
+ * ! path instead:
+ * !
+ * !     import { PosTill } from "@unlock-velocity/shared-pos-ui/ao";
+ */
