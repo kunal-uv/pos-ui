@@ -52,6 +52,53 @@ const idempotencyKey = (): string => {
   return `pos-${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}${Math.random().toString(16).slice(2)}`;
 };
 
+/* --------------------------------------------- new customer validation */
+
+type NewCustomerField = "name" | "email" | "phone";
+
+/** Spaces, dashes, dots and brackets dropped: "(604) 555-0123" -> "6045550123". */
+const normalisePhone = (value: string): string =>
+  value.trim().replace(/[\s().-]/g, "");
+
+/**
+ * The till's first pass over the New customer form, so mistakes show beside
+ * the field before anything is sent. The platform still has the last word -
+ * its refusals are shown under the field they name (`newCustomerFieldOf`).
+ * Kept general (letters in any script, 10-15 digit phones with an optional +
+ * country code) because every tenant shares this form.
+ */
+const validateNewCustomer = (values: Record<NewCustomerField, string>) => {
+  const problems: Partial<Record<NewCustomerField, string>> = {};
+  const name = values.name.trim().replace(/\s+/g, " ");
+  if (!name) problems.name = "Name is required";
+  else if (name.length > 100) problems.name = "Name can be at most 100 characters";
+  else if (!/^\p{L}[\p{L}\p{M}' .-]*$/u.test(name)) {
+    problems.name = "Name can only contain letters, spaces, apostrophes, hyphens and dots";
+  }
+
+  const email = values.email.trim();
+  if (!email) problems.email = "Email is required";
+  else if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    problems.email = "Please enter a valid email address";
+  }
+
+  const phone = normalisePhone(values.phone);
+  if (!phone) problems.phone = "Phone number is required";
+  else if (!/^\+?\d{10,15}$/.test(phone)) {
+    problems.phone = "Enter a valid phone number: 10 to 15 digits, with an optional + country code";
+  }
+  return problems;
+};
+
+/** Which field a platform refusal is about, or null for the form as a whole. */
+const newCustomerFieldOf = (message: string): NewCustomerField | null => {
+  const text = message.toLowerCase();
+  if (text.includes("phone")) return "phone";
+  if (text.includes("email")) return "email";
+  if (text.includes("name")) return "name";
+  return null;
+};
+
 /**
  * Rental months and the rental period are one fact, not two.
  *
@@ -384,6 +431,21 @@ export const SharedPos = ({
     email: "",
     phone: "",
   });
+  /**
+   * Shown under each field of the New customer form. A field's own error
+   * appears once it has been left (or Create was pressed), so the operator is
+   * not scolded mid-word; the platform's refusal (a phone already on file)
+   * lands under the field it is about rather than in the till's banner,
+   * behind the modal where nobody is looking.
+   */
+  const [newCustomerTouched, setNewCustomerTouched] = useState<
+    Partial<Record<NewCustomerField, boolean>>
+  >({});
+  const [newCustomerServerError, setNewCustomerServerError] = useState<{
+    field: NewCustomerField | null;
+    message: string;
+  } | null>(null);
+  const [creatingCustomer, setCreatingCustomer] = useState(false);
   const [fulfilment, setFulfilment] = useState<"pickup" | "delivery">("pickup");
   const [deliveryAddress, setDeliveryAddress] = useState<PosAddress>(() =>
     blankDeliveryAddress(tenant),
@@ -813,19 +875,52 @@ export const SharedPos = ({
     }
   };
 
+  const openNewCustomer = () => {
+    setNewCustomerTouched({});
+    setNewCustomerServerError(null);
+    setShowNewCustomer(true);
+  };
+
+  const closeNewCustomer = () => {
+    setShowNewCustomer(false);
+    setNewCustomerTouched({});
+    setNewCustomerServerError(null);
+  };
+
+  const editNewCustomer = (field: NewCustomerField, value: string) => {
+    setNewCustomer({ ...newCustomer, [field]: value });
+    // The platform's refusal was about the old value; drop it once edited.
+    if (newCustomerServerError?.field === field || newCustomerServerError?.field === null) {
+      setNewCustomerServerError(null);
+    }
+  };
+
   const createCustomer = async () => {
+    const problems = validateNewCustomer(newCustomer);
+    if (Object.keys(problems).length > 0) {
+      setNewCustomerTouched({ name: true, email: true, phone: true });
+      return;
+    }
     try {
+      setCreatingCustomer(true);
+      setNewCustomerServerError(null);
       const created = await client.request<Customer>("/customers", {
         method: "POST",
-        body: JSON.stringify(newCustomer),
+        body: JSON.stringify({
+          name: newCustomer.name.trim().replace(/\s+/g, " "),
+          email: newCustomer.email.trim().toLowerCase(),
+          phone: normalisePhone(newCustomer.phone),
+        }),
       });
-      setShowNewCustomer(false);
+      closeNewCustomer();
       setNewCustomer({ name: "", email: "", phone: "" });
       await chooseCustomer(created);
     } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "Unable to create customer",
-      );
+      const message =
+        reason instanceof Error ? reason.message : "Unable to create customer";
+      setNewCustomerServerError({ field: newCustomerFieldOf(message), message });
+    } finally {
+      setCreatingCustomer(false);
     }
   };
 
@@ -837,11 +932,19 @@ export const SharedPos = ({
         deliveryAddress.state.trim() &&
         deliveryAddress.postalCode.trim(),
     );
+  const newCustomerProblems = validateNewCustomer(newCustomer);
+  /** The message to show under a field, if any: the platform's first, then ours. */
+  const newCustomerError = (field: NewCustomerField): string | null =>
+    newCustomerServerError?.field === field
+      ? newCustomerServerError.message
+      : newCustomerTouched[field]
+        ? newCustomerProblems[field] ?? null
+        : null;
   const canCreateCustomer = Boolean(
     newCustomer.name.trim() &&
       newCustomer.email.trim() &&
       newCustomer.phone.trim(),
-  );
+  ) && !creatingCustomer;
   const checkoutDisabled =
     busy ||
     !cart?.lines.length ||
@@ -2456,7 +2559,7 @@ export const SharedPos = ({
                       />
                       <button
                         type="button"
-                        onClick={() => setShowNewCustomer(true)}
+                        onClick={openNewCustomer}
                         style={{
                           ...s.ghostButton,
                           width: 48,
@@ -3494,32 +3597,74 @@ export const SharedPos = ({
             >
               New customer
             </h2>
-            <div style={{ display: "grid", gap: 10 }}>
-              <input
-                style={s.field}
-                placeholder="Full name"
-                value={newCustomer.name}
-                onChange={(event) =>
-                  setNewCustomer({ ...newCustomer, name: event.target.value })
-                }
-              />
-              <input
-                style={s.field}
-                type="email"
-                placeholder="Email"
-                value={newCustomer.email}
-                onChange={(event) =>
-                  setNewCustomer({ ...newCustomer, email: event.target.value })
-                }
-              />
-              <input
-                style={s.field}
-                placeholder="Phone"
-                value={newCustomer.phone}
-                onChange={(event) =>
-                  setNewCustomer({ ...newCustomer, phone: event.target.value })
-                }
-              />
+            <div style={{ display: "grid", gap: 12 }}>
+              {(
+                [
+                  { field: "name", label: "Full name", placeholder: "e.g. Jane Smith", type: "text", maxLength: 100 },
+                  { field: "email", label: "Email", placeholder: "name@example.com", type: "email", maxLength: 254 },
+                  { field: "phone", label: "Phone", placeholder: "e.g. +1 604 555 0123", type: "tel", maxLength: 20 },
+                ] as const
+              ).map(({ field, label, placeholder, type, maxLength }) => {
+                const message = newCustomerError(field);
+                const id = `pos-new-customer-${field}`;
+                return (
+                  <div key={field}>
+                    <label
+                      htmlFor={id}
+                      style={{
+                        display: "block",
+                        marginBottom: 5,
+                        fontSize: 12.5,
+                        fontWeight: 700,
+                        color: theme.ink,
+                      }}
+                    >
+                      {label} <span style={{ color: theme.danger }}>*</span>
+                    </label>
+                    <input
+                      id={id}
+                      style={{
+                        ...s.field,
+                        ...(message ? { borderColor: theme.danger } : {}),
+                      }}
+                      type={type}
+                      placeholder={placeholder}
+                      maxLength={maxLength}
+                      value={newCustomer[field]}
+                      aria-invalid={Boolean(message)}
+                      aria-describedby={message ? `${id}-error` : undefined}
+                      onChange={(event) => editNewCustomer(field, event.target.value)}
+                      onBlur={() =>
+                        setNewCustomerTouched((touched) => ({ ...touched, [field]: true }))
+                      }
+                    />
+                    {message && (
+                      <div
+                        id={`${id}-error`}
+                        role="alert"
+                        style={{ marginTop: 4, fontSize: 12, color: theme.danger }}
+                      >
+                        {message}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {newCustomerServerError && newCustomerServerError.field === null && (
+                <div
+                  role="alert"
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    fontSize: 12.5,
+                    color: theme.danger,
+                    background: theme.dangerBg,
+                    border: `1px solid ${theme.dangerBorder}`,
+                  }}
+                >
+                  {newCustomerServerError.message}
+                </div>
+              )}
             </div>
             <div
               style={{
@@ -3532,7 +3677,7 @@ export const SharedPos = ({
               <button
                 type="button"
                 style={{ ...s.ghostButton, width: 100 }}
-                onClick={() => setShowNewCustomer(false)}
+                onClick={closeNewCustomer}
               >
                 Cancel
               </button>
@@ -3553,7 +3698,7 @@ export const SharedPos = ({
                   background: canCreateCustomer ? theme.accent : "#C9D3CE",
                 }}
               >
-                Create
+                {creatingCustomer ? "Creating..." : "Create"}
               </button>
             </div>
           </div>
