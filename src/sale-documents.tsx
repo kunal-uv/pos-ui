@@ -22,9 +22,11 @@ interface DocumentRow {
  * ! marked. A delivery the customer decides to collect after all is a counter
  * ! conversation, not a reason to reopen the sale.
  *
- * ! The completion screen behind this keeps the order number and a button that
- * ! reopens this modal. A number reachable only inside a dismissed dialog is a
- * ! number nobody can look up.
+ * ! This opens by itself the moment checkout commits - there is no completion
+ * ! screen behind it any more. It is therefore the only place the new order
+ * ! number is shown, which is why the header carries it: a number reachable
+ * ! only inside a dismissed dialog is a number nobody can look up. Closing it
+ * ! resets the till for the next customer.
  */
 export const PosSaleDocuments = ({ document, theme, onClose }: {
 	document: PosSaleDocument;

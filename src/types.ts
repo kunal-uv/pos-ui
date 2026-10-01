@@ -25,7 +25,14 @@ export interface PosSession {
   userId: string;
   displayName: string | null;
   currency: string;
+  /** The combined rate the cart is priced with. */
   taxRate: number;
+  /**
+   * The same rate itemised as the store configured it (GST, PST, ...). Display
+   * only: the cart's money is computed from `taxRate`. Absent or single-entry
+   * means the till shows one combined tax line, as before.
+   */
+  taxes?: { name: string; rate: number }[];
   shippingFee?: number;
   business?: PosBusinessProfile | null;
   capabilities: {

@@ -232,15 +232,22 @@ const SignaturePad = ({
       </div>
       <canvas
         ref={canvasRef}
-        width={700}
-        height={160}
+        /*
+         * Backing resolution, not display size - the element is laid out at
+         * 100% of the dialog. Widened with the dialog so a signature drawn
+         * across the full pad keeps the same stroke density as before.
+         */
+        width={1100}
+        height={200}
         onPointerDown={begin}
         onPointerMove={move}
         onPointerUp={end}
         onPointerCancel={end}
         style={{
           width: "100%",
-          height: 104,
+          // Taller to match the wider pad, so the signing area keeps a natural
+          // writing ratio rather than becoming a letterbox.
+          height: 128,
           border: `1px solid ${theme.border}`,
           borderRadius: 12,
           background: theme.surface,
@@ -388,9 +395,6 @@ export const SharedPos = ({
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [signatureData, setSignatureData] = useState<string | null>(null);
   const [marketingConsent, setMarketingConsent] = useState(true);
-  const [completedOrder, setCompletedOrder] = useState<{
-    number: string;
-  } | null>(null);
   // Built from the cart at the moment it was committed. Held apart from the
   // cart state because the cart is gone once the transaction completes, and a
   // reprint has to show what was actually charged.
@@ -980,7 +984,6 @@ export const SharedPos = ({
         body: "{}",
       });
       setCheckoutOpen(false);
-      setCompletedOrder(order);
       setSaleDocument(
         buildSaleDocument({
           cart: checkoutCart,
@@ -1016,6 +1019,17 @@ export const SharedPos = ({
       setBusy(false);
     }
   };
+
+  /**
+   * Finished with the completed sale: clear the till for the next customer.
+   *
+   * A reload rather than unwinding each piece of state by hand - the cart is
+   * gone server-side once checkout commits, and a full reset is the only way
+   * to be sure nothing from the last sale (customer, signature, fulfilment,
+   * survey answers) leaks into the next one. This is what the removed
+   * "Start another transaction" button did.
+   */
+  const resetAfterSale = () => window.location.reload();
 
   /* --------------------------------------------------------------- style */
   const s = useMemo(
@@ -1947,6 +1961,7 @@ export const SharedPos = ({
                     rental={rental}
                     theme={theme}
                     money={money}
+                    taxes={session?.taxes}
                     compact
                   />
                 </div>
@@ -3132,6 +3147,7 @@ export const SharedPos = ({
                       rental={rental}
                       theme={theme}
                       money={money}
+                      taxes={session?.taxes}
                     />
                   </div>
                   <span style={s.label}>PAYMENT TYPE</span>
@@ -3210,7 +3226,13 @@ export const SharedPos = ({
           <div
             style={{
               ...s.modal,
-              width: "min(620px, 100%)",
+              /*
+               * The pad is laid out at 100% of this dialog, so the dialog is
+               * what actually caps how long a signature can be. Widened for
+               * a full-width signing area on a counter screen; `100%` still
+               * keeps it inside a narrow tablet.
+               */
+              width: "min(920px, 100%)",
               borderRadius: 22,
               padding: 22,
             }}
@@ -3352,81 +3374,24 @@ export const SharedPos = ({
         </div>
       )}
 
-      {completedOrder && (
-        <div
-          style={{ ...s.modalBackdrop, zIndex: 1150 }}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Checkout complete"
-        >
-          <div
-            style={{
-              ...s.modal,
-              width: "min(520px, 100%)",
-              borderRadius: 22,
-              padding: 36,
-              textAlign: "center",
-            }}
-          >
-            <div
-              style={{
-                width: 64,
-                height: 64,
-                borderRadius: 32,
-                margin: "0 auto 18px",
-                display: "grid",
-                placeItems: "center",
-                background: theme.accentSoft,
-                color: theme.accent,
-                fontSize: 30,
-              }}
-            >
-              ✓
-            </div>
-            <h2
-              style={{
-                margin: "0 0 6px",
-                fontSize: 21,
-                fontWeight: 800,
-                color: theme.ink,
-              }}
-            >
-              Checkout complete
-            </h2>
-            <p style={{ margin: "0 0 22px", color: theme.muted, fontSize: 14 }}>
-              Order{" "}
-              <b style={{ color: theme.ink, fontFamily: monoFont }}>
-                {completedOrder.number}
-              </b>{" "}
-              was created.
-            </p>
-            <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-              {saleDocument && (
-                <button
-                  type="button"
-                  onClick={() => setDocumentsOpen(true)}
-                  style={{ ...s.ghostButton, height: 48, fontSize: 14.5 }}
-                >
-                  Print documents
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                style={{ ...s.primaryButton, height: 48, fontSize: 14.5 }}
-              >
-                Start another transaction
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/*
+        * There is no "Checkout complete" interstitial. The till used to stop
+        * on a dialog offering "Print documents" / "Start another
+        * transaction"; the sale is already committed by then, so the dialog
+        * only stood between the operator and the next customer.
+        *
+        * What it carried has not been dropped. The documents view below opens
+        * straight away instead, and it shows the new order number in its own
+        * header - the two things the dialog existed for. Closing it resets
+        * the till, exactly as "Start another transaction" did.
+        */}
       {documentsOpen && saleDocument && (
         <PosSaleDocuments
           document={saleDocument}
           theme={theme}
-          onClose={() => setDocumentsOpen(false)}
+          // Done = finished with this sale. Resets the till for the next one,
+          // which is what "Start another transaction" used to do.
+          onClose={resetAfterSale}
         />
       )}
 
@@ -3741,6 +3706,9 @@ const buildSaleDocument = (input: {
     : cart.taxRate > 0
       ? `Tax (${(cart.taxRate * 100).toFixed(2).replace(/\.00$/, "")}%)`
       : "Tax";
+  const taxRows = exemption.exempt
+    ? null
+    : taxBreakdown(session.taxes, cart.taxTotal);
   const totals = [
     ...(cart.discountTotal > 0
       ? [{ label: "MSRP / original price", value: originalMerchandise }]
@@ -3776,7 +3744,11 @@ const buildSaleDocument = (input: {
       ? [{ label: "Refundable security deposit", value: cart.depositTotal }]
       : []),
     { label: "Subtotal", value: preTaxTotal },
-    { label: taxLabel, value: cart.taxTotal },
+    // One row per configured tax where the store has more than one, so the
+    // printed invoice itemises GST and PST rather than a combined figure.
+    ...(taxRows
+      ? taxRows.map((row) => ({ label: row.label, value: row.amount }))
+      : [{ label: taxLabel, value: cart.taxTotal }]),
     { label: "TOTAL", value: cart.grandTotal, emphasis: true },
     { label: "DEPOSIT", value: cart.grandTotal },
     { label: "BALANCE", value: 0, emphasis: true },
@@ -3892,6 +3864,43 @@ const parseStepCount = (value: string): number | null => {
   if (value.trim() === "") return null;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : null;
+};
+
+/**
+ * One display row per configured tax (GST, PST, ...), from the single charged
+ * figure.
+ *
+ * The cart is priced with one combined rate, so the per-tax amounts have to be
+ * apportioned back out rather than recomputed: recomputing from a base would
+ * drift from what was actually charged, because tax is rounded per line and
+ * deposits are outside the base. Shares are taken in proportion to each rate
+ * and the last row absorbs the rounding remainder, so the rows always add up
+ * to `taxTotal` exactly.
+ *
+ * Returns `null` when there is nothing to break out - no breakdown reported,
+ * or a single tax - and the caller keeps the existing one-line display.
+ */
+const taxBreakdown = (
+  taxes: { name: string; rate: number }[] | undefined,
+  taxTotal: number,
+): { label: string; amount: number }[] | null => {
+  const configured = (taxes ?? []).filter((tax) => tax.rate > 0);
+  if (configured.length < 2) return null;
+
+  const totalRate = configured.reduce((sum, tax) => sum + tax.rate, 0);
+  if (totalRate <= 0) return null;
+
+  const cents = Math.round(taxTotal * 100);
+  let allocated = 0;
+  return configured.map((tax, index) => {
+    const last = index === configured.length - 1;
+    const share = last
+      ? cents - allocated
+      : Math.round((cents * tax.rate) / totalRate);
+    allocated += share;
+    const percent = (tax.rate * 100).toFixed(2).replace(/\.?0+$/, "");
+    return { label: `${tax.name} (${percent}%)`, amount: share / 100 };
+  });
 };
 
 /**
@@ -4503,12 +4512,15 @@ const PaymentSummary = ({
   rental,
   theme,
   money,
+  taxes,
   compact = false,
 }: {
   cart: PosCart;
   rental: boolean;
   theme: PosTheme;
   money: (value: number) => string;
+  /** The store's configured taxes, for an itemised breakdown. */
+  taxes?: { name: string; rate: number }[];
   compact?: boolean;
 }) => {
   const recurringFees = groupedFees(cart, true, true);
@@ -4540,6 +4552,7 @@ const PaymentSummary = ({
     : cart.taxRate > 0
       ? `Tax (${(cart.taxRate * 100).toFixed(2).replace(/\.00$/, "")}%)`
       : "Tax";
+  const taxRows = exemption.exempt ? null : taxBreakdown(taxes, cart.taxTotal);
   // What the credit actually paid for, which is never more than the sale.
   const creditApplied = Math.min(
     cart.creditTotal ?? 0,
@@ -4618,7 +4631,22 @@ const PaymentSummary = ({
         style={{ height: 1, background: theme.borderSoft, margin: "3px 0" }}
       />
       <Row theme={theme} label="Subtotal" value={money(preTaxTotal)} />
-      <Row theme={theme} label={taxLabel} value={money(cart.taxTotal)} />
+      {/*
+       * A store charging GST and PST gets a row each. They are apportioned
+       * from the one charged figure, so they always add back up to it.
+       */}
+      {taxRows ? (
+        taxRows.map((row) => (
+          <Row
+            key={row.label}
+            theme={theme}
+            label={row.label}
+            value={money(row.amount)}
+          />
+        ))
+      ) : (
+        <Row theme={theme} label={taxLabel} value={money(cart.taxTotal)} />
+      )}
       {/*
        * The credit sits below tax on purpose: the new rental is taxed in full,
        * and the credit then pays part of what is owed. It is the customer's
