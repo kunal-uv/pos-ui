@@ -316,6 +316,11 @@ export const modernStyles = (business: PosBusiness): string => {
   const accent = business.accent ?? DEFAULT_ACCENT;
   return `
 * { box-sizing: border-box; }
+/*
+ * A sheet margin of our own: with none set, a print dialog on minimal margins
+ * put the document title against - and past - the top edge of the page.
+ */
+@page { size: auto; margin: 0.5in 0.45in 0.5in; }
 html, body { margin: 0; padding: 0; background: #fff; }
 body {
 	font-family: Arial, Helvetica, sans-serif;
@@ -325,7 +330,7 @@ body {
 	-webkit-print-color-adjust: exact;
 	print-color-adjust: exact;
 }
-.modern-document { width: 100%; max-width: 7.35in; margin: 0 auto; }
+.modern-document { width: 100%; max-width: 7.35in; margin: 0 auto; padding-top: 0.2in; }
 .modern-header {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
@@ -340,7 +345,7 @@ body {
 .modern-lockup img { display: block; max-height: 0.62in; max-width: 2.6in; width: auto; object-fit: contain; }
 .modern-store-address { margin-top: 7px; font-size: 7.6pt; line-height: 1.35; }
 .modern-document-heading { text-align: right; font-size: 7.4pt; line-height: 1.45; }
-.modern-document-heading h1 { margin: -2px 0 6px; font-size: 16pt; letter-spacing: 3.2px; line-height: 1; }
+.modern-document-heading h1 { margin: 0 0 6px; font-size: 16pt; letter-spacing: 3.2px; line-height: 1; }
 .modern-registration { margin-top: 5px; font-weight: 700; }
 .modern-meta { display: flex; justify-content: space-between; gap: 18px; padding: 16px 10px 15px; font-size: 8pt; }
 .modern-meta strong { margin-right: 3px; }
