@@ -43,6 +43,8 @@ export interface PosSession {
     holds: boolean;
     splitPayments: boolean;
     signature: boolean;
+    /** The New Customer form proves a new customer's email with an emailed code. */
+    customerEmailVerification?: boolean;
     fulfilment: Array<"PICKUP" | "DELIVERY">;
   };
 }

@@ -9,6 +9,7 @@ import React, {
 } from "react";
 import { GoogleAddressInput } from "./address-autocomplete";
 import { PosClient } from "./client";
+import { NewCustomerForm } from "./new-customer-form";
 import { PosSaleDocuments } from "./sale-documents";
 import type { PosSaleDocument } from "./print/slips";
 import {
@@ -379,11 +380,6 @@ export const SharedPos = ({
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
-  const [newCustomer, setNewCustomer] = useState({
-    name: "",
-    email: "",
-    phone: "",
-  });
   const [fulfilment, setFulfilment] = useState<"pickup" | "delivery">("pickup");
   const [deliveryAddress, setDeliveryAddress] = useState<PosAddress>(() =>
     blankDeliveryAddress(tenant),
@@ -813,20 +809,13 @@ export const SharedPos = ({
     }
   };
 
-  const createCustomer = async () => {
-    try {
-      const created = await client.request<Customer>("/customers", {
-        method: "POST",
-        body: JSON.stringify(newCustomer),
-      });
-      setShowNewCustomer(false);
-      setNewCustomer({ name: "", email: "", phone: "" });
-      await chooseCustomer(created);
-    } catch (reason) {
-      setError(
-        reason instanceof Error ? reason.message : "Unable to create customer",
-      );
-    }
+  const openNewCustomer = () => setShowNewCustomer(true);
+  const closeNewCustomer = () => setShowNewCustomer(false);
+
+  /** The new customer is chosen for this sale straight away. */
+  const customerCreated = async (created: Customer) => {
+    setShowNewCustomer(false);
+    await chooseCustomer(created);
   };
 
   const deliveryComplete =
@@ -837,11 +826,6 @@ export const SharedPos = ({
         deliveryAddress.state.trim() &&
         deliveryAddress.postalCode.trim(),
     );
-  const canCreateCustomer = Boolean(
-    newCustomer.name.trim() &&
-      newCustomer.email.trim() &&
-      newCustomer.phone.trim(),
-  );
   const checkoutDisabled =
     busy ||
     !cart?.lines.length ||
@@ -2456,7 +2440,7 @@ export const SharedPos = ({
                       />
                       <button
                         type="button"
-                        onClick={() => setShowNewCustomer(true)}
+                        onClick={openNewCustomer}
                         style={{
                           ...s.ghostButton,
                           width: 48,
@@ -3477,87 +3461,14 @@ export const SharedPos = ({
 
       {/* -------------------------------------------- new customer */}
       {showNewCustomer && (
-        <div
-          style={{ ...s.modalBackdrop, zIndex: 1100 }}
-          role="dialog"
-          aria-modal="true"
-          aria-label="New customer"
-        >
-          <div style={{ ...s.modal, width: "min(460px, 100%)", padding: 22 }}>
-            <h2
-              style={{
-                margin: "0 0 14px",
-                fontSize: 18,
-                fontWeight: 800,
-                color: theme.ink,
-              }}
-            >
-              New customer
-            </h2>
-            <div style={{ display: "grid", gap: 10 }}>
-              <input
-                style={s.field}
-                placeholder="Full name"
-                value={newCustomer.name}
-                onChange={(event) =>
-                  setNewCustomer({ ...newCustomer, name: event.target.value })
-                }
-              />
-              <input
-                style={s.field}
-                type="email"
-                placeholder="Email"
-                value={newCustomer.email}
-                onChange={(event) =>
-                  setNewCustomer({ ...newCustomer, email: event.target.value })
-                }
-              />
-              <input
-                style={s.field}
-                placeholder="Phone"
-                value={newCustomer.phone}
-                onChange={(event) =>
-                  setNewCustomer({ ...newCustomer, phone: event.target.value })
-                }
-              />
-            </div>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: 10,
-                marginTop: 18,
-              }}
-            >
-              <button
-                type="button"
-                style={{ ...s.ghostButton, width: 100 }}
-                onClick={() => setShowNewCustomer(false)}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={!canCreateCustomer}
-                onClick={createCustomer}
-                style={{
-                  height: 38,
-                  width: 140,
-                  borderRadius: 10,
-                  border: 0,
-                  fontFamily: uiFont,
-                  fontSize: 13.5,
-                  fontWeight: 800,
-                  color: "#fff",
-                  cursor: canCreateCustomer ? "pointer" : "not-allowed",
-                  background: canCreateCustomer ? theme.accent : "#C9D3CE",
-                }}
-              >
-                Create
-              </button>
-            </div>
-          </div>
-        </div>
+        <NewCustomerForm
+          client={client}
+          theme={theme}
+          emailVerification={session?.capabilities.customerEmailVerification === true}
+          googleMapsApiKey={googleMapsApiKey}
+          onClose={closeNewCustomer}
+          onCreated={customerCreated}
+        />
       )}
     </div>
   );
