@@ -10,6 +10,7 @@ import React, {
 import { GoogleAddressInput } from "./address-autocomplete";
 import { PosClient } from "./client";
 import { NewCustomerForm } from "./new-customer-form";
+import { TillLoader } from "./till-loader";
 import { PosSaleDocuments } from "./sale-documents";
 import type { PosSaleDocument } from "./print/slips";
 import {
@@ -1094,21 +1095,7 @@ export const SharedPos = ({
 
   /* ---------------------------------------------------------------- gate */
   if (booting) {
-    return (
-      <div
-        style={{
-          height: frameHeight,
-          display: "grid",
-          placeItems: "center",
-          background: theme.bg,
-          color: theme.muted,
-          fontFamily: uiFont,
-          fontSize: 15,
-        }}
-      >
-        Opening the till…
-      </div>
-    );
+    return <TillLoader theme={theme} height={frameHeight} />;
   }
 
   if (!session || !cart) {
