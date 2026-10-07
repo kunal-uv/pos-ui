@@ -2772,71 +2772,27 @@ export const SharedPos = ({
                   {fulfilment === "delivery" ? (
                     <>
                       <span style={{ ...s.label, marginTop: 3 }}>DELIVERY</span>
-                      <label style={{ display: "grid", gap: 5 }}>
-                        <span style={s.label}>DELIVERY DATE</span>
-                        <input
-                          style={s.field}
-                          type="date"
-                          value={orderDetails.scheduledFor}
-                          onChange={(event) =>
-                            setOrderDetails({
-                              ...orderDetails,
-                              scheduledFor: event.target.value,
-                            })
-                          }
-                        />
-                      </label>
                       <div
                         style={{
                           display: "grid",
                           gridTemplateColumns: "1fr 1fr",
-                          gap: 8,
+                          gap: 12,
                         }}
                       >
                         <label style={{ display: "grid", gap: 5 }}>
-                          <span style={s.label}>STEPS OUTSIDE HOME</span>
+                          <span style={s.label}>DELIVERY DATE</span>
                           <input
                             style={s.field}
-                            type="number"
-                            min={0}
-                            step={1}
-                            placeholder="0"
-                            value={deliverySurvey.stepsOutside ?? ""}
+                            type="date"
+                            value={orderDetails.scheduledFor}
                             onChange={(event) =>
-                              setDeliverySurvey({
-                                ...deliverySurvey,
-                                stepsOutside: parseStepCount(
-                                  event.target.value,
-                                ),
+                              setOrderDetails({
+                                ...orderDetails,
+                                scheduledFor: event.target.value,
                               })
                             }
                           />
                         </label>
-                        <label style={{ display: "grid", gap: 5 }}>
-                          <span style={s.label}>STEPS INSIDE HOME</span>
-                          <input
-                            style={s.field}
-                            type="number"
-                            min={0}
-                            step={1}
-                            placeholder="0"
-                            value={deliverySurvey.stepsInside ?? ""}
-                            onChange={(event) =>
-                              setDeliverySurvey({
-                                ...deliverySurvey,
-                                stepsInside: parseStepCount(event.target.value),
-                              })
-                            }
-                          />
-                        </label>
-                      </div>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "1fr 1fr",
-                          gap: 8,
-                        }}
-                      >
                         <label style={{ display: "grid", gap: 5 }}>
                           <span style={s.label}>ENTRANCE DOOR</span>
                           <select
@@ -2879,17 +2835,49 @@ export const SharedPos = ({
                             <option value="basement">Basement</option>
                           </select>
                         </label>
+                        <div />
+                        <label style={{ display: "grid", gap: 5 }}>
+                          <span style={s.label}>STEPS OUTSIDE HOME</span>
+                          <input
+                            style={s.field}
+                            type="number"
+                            min={0}
+                            step={1}
+                            placeholder="0"
+                            value={deliverySurvey.stepsOutside ?? ""}
+                            onChange={(event) =>
+                              setDeliverySurvey({
+                                ...deliverySurvey,
+                                stepsOutside: parseStepCount(
+                                  event.target.value,
+                                ),
+                              })
+                            }
+                          />
+                        </label>
+                        <label style={{ display: "grid", gap: 5 }}>
+                          <span style={s.label}>STEPS INSIDE HOME</span>
+                          <input
+                            style={s.field}
+                            type="number"
+                            min={0}
+                            step={1}
+                            placeholder="0"
+                            value={deliverySurvey.stepsInside ?? ""}
+                            onChange={(event) =>
+                              setDeliverySurvey({
+                                ...deliverySurvey,
+                                stepsInside: parseStepCount(event.target.value),
+                              })
+                            }
+                          />
+                        </label>
                       </div>
-                      <div
-                        style={{
-                          display: "grid",
-                          gap: 7,
-                          border: `1px solid ${theme.borderSoft}`,
-                          borderRadius: 12,
-                          padding: 11,
-                        }}
-                      >
-                        <span style={s.label}>CHARGEABLE OPTIONS</span>
+                      <span style={{ fontSize: 12, color: theme.muted }}>
+                        Tick what applies. Extras are recorded for the driver
+                        and charged on the day if needed.
+                      </span>
+                      <div style={{ display: "grid", gap: 9 }}>
                         {(
                           [
                             ["hosesBought", "Hoses bought"],
@@ -2904,7 +2892,8 @@ export const SharedPos = ({
                               alignItems: "center",
                               justifyContent: "space-between",
                               gap: 10,
-                              fontSize: 13,
+                              fontSize: 13.5,
+                              color: theme.ink,
                             }}
                           >
                             <span>{label}</span>
@@ -2918,9 +2907,9 @@ export const SharedPos = ({
                                     aria-pressed={active}
                                     style={{
                                       ...s.ghostButton,
-                                      height: 30,
-                                      minWidth: 45,
-                                      padding: "0 9px",
+                                      height: 32,
+                                      minWidth: 52,
+                                      padding: "0 10px",
                                       color: active ? "#fff" : theme.inkSoft,
                                       background: active
                                         ? theme.accent
@@ -3579,6 +3568,11 @@ const buildSaleDocument = (input: {
         String(
           (line.metadata?.unit as Record<string, unknown> | undefined)?.grade ??
             "",
+        ) || null,
+      gradeLabel:
+        String(
+          (line.metadata?.unit as Record<string, unknown> | undefined)
+            ?.gradeLabel ?? "",
         ) || null,
       details,
       unitPrice: line.unitPrice,

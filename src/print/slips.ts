@@ -5,10 +5,9 @@
  * `document.ts`: an Invoice the customer keeps, and a Pickup or Delivery slip
  * signed when the goods actually change hands.
  *
- * ! Neither slip reproduces the signature captured at the till. That signature
- * ! says "I agree to this sale"; a slip says "I received these goods", and the
- * ! second has not happened yet when the slip is printed. Each slip carries a
- * ! blank block instead and is signed on receipt.
+ * The customer's signature, when the till captured one, is printed on both
+ * slips above the signature line. Without one - an order reprinted from the
+ * admin that predates signatures - the line is left blank and signed on receipt.
  */
 
 import {
@@ -58,7 +57,7 @@ export interface PosSaleDocument {
   hosesBought?: boolean | null;
   doorRemoval?: boolean | null;
   dryerVent?: boolean | null;
-  /** Captured at the till. Printed on the invoice only - never on a slip. */
+  /** Captured at the till. Printed on the invoice and above the line on each slip. */
   signature?: string | null;
   scheduledFor?: string | null;
   /**
@@ -152,8 +151,8 @@ export const buildPickupSlipHTML = (document: PosSaleDocument): string => {
 	${modernInstructions("RENTAL TERM", document.term)}
 	${modernInstructions("PICKUP INSTRUCTIONS", document.pickupInstructions)}
 	<div class="modern-acknowledgement">I acknowledge that I received all the products listed above safely and without any damage to my property.</div>
-	${modernReceiptSignature()}
-	<div class="modern-receipt-note">This slip is signed at the point of pickup. The signature captured at the point of sale is not reproduced here.</div>
+	${modernReceiptSignature(document.signature)}
+	<div class="modern-receipt-note">${document.signature ? "The signature above was captured at the point of sale." : "This slip is signed at the point of pickup."}</div>
 	<div class="modern-thank-you">THANK YOU FOR SUPPORTING OUR BUSINESS, SEE YOU AGAIN</div>`;
 
   return documentShell("Pickup Slip", body, business);
@@ -208,8 +207,8 @@ export const buildDeliverySlipHTML = (document: PosSaleDocument): string => {
 	${modernInstructions("DELIVERY INSTRUCTIONS", document.deliveryInstructions)}
 	${modernInstructions("ORDER NOTE", document.notes)}
 	<div class="modern-acknowledgement">I acknowledge that I received all the items listed above safely and without any damage to my property, and that I am completely satisfied with the delivery service.</div>
-	${modernReceiptSignature()}
-	<div class="modern-receipt-note">This slip is signed at the door on delivery. The signature captured at the point of sale is not reproduced here.</div>`;
+	${modernReceiptSignature(document.signature)}
+	<div class="modern-receipt-note">${document.signature ? "The signature above was captured at the point of sale." : "This slip is signed at the door on delivery."}</div>`;
 
   return documentShell("Delivery Slip", body, business);
 };
