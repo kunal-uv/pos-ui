@@ -48,6 +48,8 @@ export interface PosDocumentItem {
   reference?: string | null;
   /** A-D grade, printed on the invoice only. */
   grade?: string | null;
+  /** Plain words for the grade ("Good", "Like new"), printed under the letter. */
+  gradeLabel?: string | null;
   /** Extra lines under the description: rental period, add-ons, condition. */
   details?: string[];
   unitPrice?: number;
@@ -187,6 +189,17 @@ const itemDescription = (item: PosDocumentItem): string => {
 };
 
 /** The priced table: what the customer is being charged for, itemised. */
+/**
+ * What the GRADE column prints. An assessed unit has a letter, A to D. A unit
+ * nobody has graded yet reports "UNASSESSED", which is a state and not a grade,
+ * so it reads "Not assessed". A line with no unit at all prints a dash.
+ */
+export const printGrade = (grade: string | null | undefined): string => {
+  const code = String(grade ?? "").trim().toUpperCase();
+  if (!code) return "-";
+  return /^[A-D]$/.test(code) ? code : "Not assessed";
+};
+
 export const modernInvoiceItems = (
   items: PosDocumentItem[],
   business: PosBusiness,
@@ -203,7 +216,7 @@ export const modernInvoiceItems = (
 				<td class="qty">${printText(item.quantity)}</td>
 				<td>${itemDescription(item)}</td>
 				<td>${printText(item.reference)}</td>
-				<td class="center">${printText(item.grade || "-")}</td>
+				<td class="center">${printText(printGrade(item.grade))}${/^[A-Da-d]$/.test(String(item.grade ?? "")) && item.gradeLabel ? `<div class="modern-item-detail">${printText(item.gradeLabel)}</div>` : ""}</td>
 				<td class="money">${item.unitPrice === undefined ? "" : printMoney(item.unitPrice, business)}</td>
 				<td class="money">${item.amount === undefined ? "" : printMoney(item.amount, business)}</td>
 			</tr>`,
@@ -267,10 +280,15 @@ export const modernTotals = (
  * ! hands, and it is signed when they do - printing the signature captured at
  * ! the till would be a receipt for a handover nobody has made yet.
  */
-export const modernReceiptSignature = (): string => `
+/**
+ * The three lines a slip is signed on. When the customer's signature was
+ * captured at the till it is printed above the signature line, so the slip
+ * carries it; without one the line is left blank to be signed by hand.
+ */
+export const modernReceiptSignature = (signature?: string | null): string => `
 	<div class="modern-receipt-lines">
 		<div><span>PRINTED NAME</span></div>
-		<div><span>CUSTOMER SIGNATURE</span></div>
+		<div>${signature ? `<img src="${printText(signature)}" alt="" onerror="this.style.display='none';" />` : ""}<span>CUSTOMER SIGNATURE</span></div>
 		<div><span>DATE</span></div>
 	</div>`;
 
@@ -381,7 +399,8 @@ body {
 .modern-steps { margin: 5px 0 0; padding-left: 19px; }
 .modern-steps li + li { margin-top: 3px; }
 .modern-receipt-lines { display: grid; grid-template-columns: 1.2fr 1.15fr 0.62fr; gap: 20px; margin: 34px 10px 16px; }
-.modern-receipt-lines > div { height: 26px; border-top: 1px solid #111; }
+.modern-receipt-lines > div { position: relative; height: 26px; border-top: 1px solid #111; }
+.modern-receipt-lines img { position: absolute; left: 0; bottom: 100%; max-height: 32px; max-width: 100%; }
 .modern-receipt-lines span { display: block; padding-top: 4px; font-size: 6.6pt; letter-spacing: 1.1px; }
 .modern-receipt-note { color: #777; font-size: 6.2pt; }
 .modern-thank-you { margin-top: 8px; text-align: center; font-size: 8.8pt; font-weight: 800; letter-spacing: 1.8px; }
