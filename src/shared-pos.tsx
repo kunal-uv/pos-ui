@@ -400,6 +400,8 @@ export const SharedPos = ({
   );
   const [documentsOpen, setDocumentsOpen] = useState(false);
   const [noteLineId, setNoteLineId] = useState<string | null>(null);
+  /** The line whose warranty is being chosen. */
+  const [warrantyLineId, setWarrantyLineId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [removeConfirmLineId, setRemoveConfirmLineId] = useState<string | null>(
     null,
@@ -677,6 +679,28 @@ export const SharedPos = ({
     } catch (reason) {
       setError(
         reason instanceof Error ? reason.message : "Unable to remove item",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Puts a warranty plan on a line, or takes it off with `null`. */
+  const chooseWarranty = async (lineId: string, warrantyId: string | null) => {
+    if (!cart) return;
+    try {
+      setBusy(true);
+      setError(null);
+      setCart(
+        await client.request<PosCart>(`/carts/${cart.id}/lines/${lineId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ warrantyId }),
+        }),
+      );
+      setWarrantyLineId(null);
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Unable to change the warranty",
       );
     } finally {
       setBusy(false);
@@ -1758,6 +1782,7 @@ export const SharedPos = ({
                         setNoteLineId(line.id);
                         setNoteDraft(lineNote(line));
                       }}
+                      onWarranty={() => setWarrantyLineId(line.id)}
                       onAskRemove={() => setRemoveConfirmLineId(line.id)}
                       onCancelRemove={() => setRemoveConfirmLineId(null)}
                       onRemove={() => {
@@ -3356,6 +3381,85 @@ export const SharedPos = ({
         />
       )}
 
+      {warrantyLineId && (() => {
+        const target = cart?.lines.find((entry) => entry.id === warrantyLineId);
+        if (!target) return null;
+        const plans = target.availableWarranties ?? [];
+        return (
+          <div
+            style={{ ...s.modalBackdrop, zIndex: 1250 }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Extended warranty"
+          >
+            <div style={{ ...s.modal, width: "min(640px, 100%)", borderRadius: 18, padding: 22 }}>
+              <h2 style={{ margin: "0 0 4px", fontSize: 19, fontWeight: 800, color: theme.ink }}>
+                Extended warranty
+              </h2>
+              <p style={{ margin: "0 0 14px", fontSize: 12.5, color: theme.muted }}>
+                For {target.name}. Charged once with this rental and printed on the invoice.
+              </p>
+              {plans.length === 0 ? (
+                <p style={{ fontSize: 13, color: theme.muted }}>
+                  No warranty is offered with this rental.
+                </p>
+              ) : (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 10 }}>
+                  {plans.map((plan) => {
+                    const active = target.warranty?.id === plan.id;
+                    return (
+                      <button
+                        key={plan.id}
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void chooseWarranty(target.id, plan.id)}
+                        style={{
+                          textAlign: "left",
+                          padding: 12,
+                          borderRadius: 12,
+                          cursor: "pointer",
+                          fontFamily: uiFont,
+                          border: `1.5px solid ${active ? theme.accent : theme.border}`,
+                          background: active ? theme.accentSoft : theme.surface,
+                          color: theme.ink,
+                        }}
+                      >
+                        <div style={{ fontSize: 13.5, fontWeight: 800 }}>{plan.title}</div>
+                        <div style={{ marginTop: 4, fontSize: 11.5, color: theme.muted }}>
+                          {plan.durationMonths === 0
+                            ? "As-is, no cover period"
+                            : `${plan.durationMonths} month${plan.durationMonths === 1 ? "" : "s"} of cover`}
+                        </div>
+                        <div style={{ marginTop: 8, fontSize: 15, fontWeight: 800, color: theme.accentDeep }}>
+                          {money(plan.price * target.quantity)}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 18 }}>
+                <button
+                  type="button"
+                  disabled={busy || !target.warranty}
+                  style={{ ...s.ghostButton, height: 42, opacity: target.warranty ? 1 : 0.5 }}
+                  onClick={() => void chooseWarranty(target.id, null)}
+                >
+                  No warranty on this item
+                </button>
+                <button
+                  type="button"
+                  style={{ ...s.primaryButton, height: 42 }}
+                  onClick={() => setWarrantyLineId(null)}
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {noteLineId && (
         <div
           style={{ ...s.modalBackdrop, zIndex: 1250 }}
@@ -3534,7 +3638,7 @@ const buildSaleDocument = (input: {
     cart.lines.find((line) => line.rentalTenure)?.rentalTenure ?? null;
   const period = cart.lines.find((line) => line.rentalStart && line.rentalEnd);
 
-  const items = cart.lines.map((line) => {
+  const items = cart.lines.flatMap((line) => {
     const details: string[] = [];
     if (line.sku) details.push(`SKU ${line.sku}`);
     if (rental && line.rentalTenure) {
@@ -3564,7 +3668,7 @@ const buildSaleDocument = (input: {
     const note = lineNote(line);
     if (note) details.push(`Note: ${note}`);
 
-    return {
+    const mainItem = {
       quantity: line.quantity,
       description: line.name,
       reference: line.serial ?? line.sku ?? null,
@@ -3584,6 +3688,27 @@ const buildSaleDocument = (input: {
       // have their own summary rows and must not be counted into an item twice.
       amount: line.unitPrice * line.quantity,
     };
+    // A warranty sold with the rental is its own line, as at Appliance Outlet:
+    // named, priced, and counted in the totals below.
+    const warrantyItem = line.warranty
+      ? {
+          quantity: 1,
+          description: "Extended Warranty",
+          reference: "-",
+          grade: null,
+          warranty: true,
+          details: [
+            `${line.warranty.title} - ${
+              line.warranty.durationMonths === 0
+                ? "as-is"
+                : `${line.warranty.durationMonths} month${line.warranty.durationMonths === 1 ? "" : "s"}`
+            }`,
+          ],
+          unitPrice: line.warranty.total,
+          amount: line.warranty.total,
+        }
+      : null;
+    return warrantyItem ? [mainItem, warrantyItem] : [mainItem];
   });
 
   const recurringFees = groupedFees(cart, true, true);
@@ -3595,7 +3720,11 @@ const buildSaleDocument = (input: {
   const baseCurrentPeriod = Math.max(0, cart.subtotal - recurringFeeTotal);
   const exemption = taxExemption(cart);
   const preTaxTotal =
-    cart.subtotal + cart.feeTotal + cart.shippingTotal + cart.depositTotal;
+    cart.subtotal +
+    cart.feeTotal +
+    (cart.warrantyTotal ?? 0) +
+    cart.shippingTotal +
+    cart.depositTotal;
   const taxLabel = exemption.exempt
     ? `Tax exempt${exemption.reason ? ` - ${exemption.reason}` : ""}`
     : cart.taxRate > 0
@@ -3615,6 +3744,9 @@ const buildSaleDocument = (input: {
     ...oneTimeFees.map((fee) => ({ label: fee.name, value: fee.amount })),
     ...(cart.feeTotal > 0 && oneTimeFees.length === 0
       ? [{ label: "Fees", value: cart.feeTotal }]
+      : []),
+    ...((cart.warrantyTotal ?? 0) > 0
+      ? [{ label: "Warranty", value: cart.warrantyTotal ?? 0 }]
       : []),
     ...(cart.shippingTotal > 0
       ? [{ label: "Delivery", value: cart.shippingTotal }]
@@ -3853,6 +3985,7 @@ const OrderLineCard = ({
   busy,
   confirmingRemove,
   onNote,
+  onWarranty,
   onAskRemove,
   onCancelRemove,
   onRemove,
@@ -3866,6 +3999,7 @@ const OrderLineCard = ({
   busy: boolean;
   confirmingRemove: boolean;
   onNote: () => void;
+  onWarranty: () => void;
   onAskRemove: () => void;
   onCancelRemove: () => void;
   onRemove: () => void;
@@ -4101,6 +4235,29 @@ const OrderLineCard = ({
           <Icon path="M4 5h16M4 11h16M4 17h9" size={15} />
           {note ? "Note added" : "Add note"}
         </button>
+        {(line.warranty || (line.availableWarranties?.length ?? 0) > 0) && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onWarranty}
+            title={line.warranty ? "Change or remove the warranty" : "Add an extended warranty"}
+            style={{
+              ...lineAction(theme),
+              flex: 1,
+              minWidth: 0,
+              color: line.warranty ? theme.accentDeep : theme.inkSoft,
+              borderColor: line.warranty ? theme.accentOutline : theme.border,
+              background: line.warranty ? theme.accentSoft : theme.surface,
+            }}
+          >
+            <Icon path="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6l7-3z" size={15} />
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {line.warranty
+                ? `${line.warranty.title} · ${money(line.warranty.total)}`
+                : "Add warranty"}
+            </span>
+          </button>
+        )}
         <div style={{ position: "relative", flex: "none" }}>
           <button
             type="button"
@@ -4450,7 +4607,11 @@ const PaymentSummary = ({
   const exemption = taxExemption(cart);
   const originalMerchandise = cart.subtotal + cart.discountTotal;
   const preTaxTotal =
-    cart.subtotal + cart.feeTotal + cart.shippingTotal + cart.depositTotal;
+    cart.subtotal +
+    cart.feeTotal +
+    (cart.warrantyTotal ?? 0) +
+    cart.shippingTotal +
+    cart.depositTotal;
   const taxLabel = exemption.exempt
     ? `Tax exempt${exemption.reason ? ` · ${exemption.reason}` : ""}`
     : cart.taxRate > 0
@@ -4508,6 +4669,9 @@ const PaymentSummary = ({
       {oneTimeFees.map((fee) => feeRow("One-time", fee))}
       {cart.feeTotal > 0 && oneTimeFees.length === 0 && (
         <Row theme={theme} label="One-time fees" value={money(cart.feeTotal)} />
+      )}
+      {(cart.warrantyTotal ?? 0) > 0 && (
+        <Row theme={theme} label="Extended warranty" value={money(cart.warrantyTotal ?? 0)} />
       )}
       {cart.shippingTotal > 0 && (
         <Row

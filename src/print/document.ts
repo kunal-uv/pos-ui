@@ -52,6 +52,8 @@ export interface PosDocumentItem {
   grade?: string | null;
   /** Plain words for the grade ("Good", "Like new"), printed under the letter. */
   gradeLabel?: string | null;
+  /** An extended-warranty line: on the invoice, never on a pickup or delivery slip. */
+  warranty?: boolean;
   /** Extra lines under the description: rental period, add-ons, condition. */
   details?: string[];
   unitPrice?: number;
@@ -193,7 +195,8 @@ export const modernHeader = (options: PosHeaderOptions): string => {
 
 const itemDescription = (item: PosDocumentItem): string => {
   const metadata = [
-    item.reference ? `Serial ${item.reference}` : "",
+    // "-" is the placeholder in the ITEM # column, not a serial number.
+    item.reference && item.reference !== "-" ? `Serial ${item.reference}` : "",
     ...(item.details ?? []),
   ].filter(Boolean);
 
@@ -251,6 +254,7 @@ export const modernSlipItems = (
 		</tr></thead>
 		<tbody>
 			${items
+        .filter((item) => !item.warranty)
         .map(
           (item) => `<tr>
 				<td class="qty">${printText(item.quantity)}</td>
