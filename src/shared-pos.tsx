@@ -1051,71 +1051,121 @@ export const SharedPos = ({
     setCheckoutOpen(true);
   };
 
+  /**
+   * The cart's fulfilment, as both the Details step and the final checkout
+   * send it.
+   *
+   * Built in one place on purpose: the charges live on the fulfilment, so a
+   * second hand-rolled copy of this payload is a second chance for the figure
+   * the Payment step totals and the figure actually charged to disagree.
+   */
+  const buildFulfilmentPayload = () => {
+    const address = fulfilment === "delivery" ? deliveryAddress : undefined;
+    const platformCartDetails =
+      fulfilment === "delivery"
+        ? {
+            fulfilment,
+            delivery_date: orderDetails.scheduledFor || null,
+            delivery_instructions:
+              orderDetails.deliveryInstructions.trim() || null,
+            steps_outside: deliverySurvey.stepsOutside,
+            steps_inside: deliverySurvey.stepsInside,
+            entrance_door: orderDetails.entranceDoor || null,
+            entrance_level: orderDetails.entranceLevel || null,
+            hoses_bought: orderDetails.hosesBought,
+            door_removal: orderDetails.doorRemoval,
+            dryer_vent: orderDetails.dryerVent,
+            order_note: orderDetails.orderNote.trim() || null,
+          }
+        : {
+            fulfilment,
+            pickup_date: orderDetails.scheduledFor || null,
+            pickup_instructions:
+              orderDetails.pickupInstructions.trim() || null,
+            order_note: orderDetails.orderNote.trim() || null,
+          };
+
+    return {
+      cart: platformCartDetails,
+      method: fulfilment,
+      /**
+       * `shippingFee` is the key the cart has always carried for the delivery
+       * amount; it is operator-set now rather than copied from the store.
+       * Zeroed on a pickup — nothing was delivered.
+       */
+      shippingFee: fulfilment === "delivery" ? amount(deliveryCharge) : 0,
+      deliveryChargeTaxable,
+      customCharge: amount(customCharge),
+      customChargeLabel: customChargeLabel.trim() || null,
+      customChargeTaxable,
+      signatureData,
+      marketingConsent,
+      shippingAddress: address,
+      billingAddress: address,
+      stepsOutside:
+        fulfilment === "delivery" ? deliverySurvey.stepsOutside : null,
+      stepsInside:
+        fulfilment === "delivery" ? deliverySurvey.stepsInside : null,
+      scheduledFor: orderDetails.scheduledFor || null,
+      deliveryInstructions:
+        fulfilment === "delivery"
+          ? orderDetails.deliveryInstructions.trim() || null
+          : null,
+      pickupInstructions:
+        fulfilment === "pickup"
+          ? orderDetails.pickupInstructions.trim() || null
+          : null,
+      orderNote: orderDetails.orderNote.trim() || null,
+    };
+  };
+
+  /**
+   * Pushes the charges to the cart and takes the repriced totals back.
+   *
+   * ! Called on leaving Details, not only at checkout. The charges live on the
+   * ! cart, so until the server has them the Payment step is totalling a sale
+   * ! that does not include them — the operator confirms one number and the
+   * ! customer is charged another.
+   */
+  const syncCharges = async (): Promise<boolean> => {
+    if (!cart) return false;
+    try {
+      setBusy(true);
+      setError(null);
+      const repriced = await client.request<PosCart>(`/carts/${cart.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          notes: orderDetails.orderNote.trim() || null,
+          fulfilment: buildFulfilmentPayload(),
+        }),
+      });
+      setCart(repriced);
+      return true;
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Unable to apply the charges",
+      );
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const completeCheckout = async () => {
     if (!cart || !customer || !session) return;
     try {
       setBusy(true);
       setError(null);
-      const address = fulfilment === "delivery" ? deliveryAddress : undefined;
-      const platformCartDetails =
-        fulfilment === "delivery"
-          ? {
-              fulfilment,
-              delivery_date: orderDetails.scheduledFor || null,
-              delivery_instructions:
-                orderDetails.deliveryInstructions.trim() || null,
-              steps_outside: deliverySurvey.stepsOutside,
-              steps_inside: deliverySurvey.stepsInside,
-              entrance_door: orderDetails.entranceDoor || null,
-              entrance_level: orderDetails.entranceLevel || null,
-              hoses_bought: orderDetails.hosesBought,
-              door_removal: orderDetails.doorRemoval,
-              dryer_vent: orderDetails.dryerVent,
-              order_note: orderDetails.orderNote.trim() || null,
-            }
-          : {
-              fulfilment,
-              pickup_date: orderDetails.scheduledFor || null,
-              pickup_instructions:
-                orderDetails.pickupInstructions.trim() || null,
-              order_note: orderDetails.orderNote.trim() || null,
-            };
+      /**
+       * Sent again here even though Details already pushed it: the signature
+       * is captured after that step, and this is the payload the sale is
+       * actually committed with. Same builder, so the two cannot diverge.
+       */
       const checkoutCart = await client.request<PosCart>(`/carts/${cart.id}`, {
         method: "PATCH",
         body: JSON.stringify({
           notes: orderDetails.orderNote.trim() || null,
-          fulfilment: {
-            cart: platformCartDetails,
-            method: fulfilment,
-            /**
-             * `shippingFee` is the key the cart has always carried for the
-             * delivery amount; it is operator-set now rather than copied from
-             * the store. Zeroed on a pickup — nothing was delivered.
-             */
-            shippingFee: fulfilment === "delivery" ? amount(deliveryCharge) : 0,
-            deliveryChargeTaxable,
-            customCharge: amount(customCharge),
-            customChargeLabel: customChargeLabel.trim() || null,
-            customChargeTaxable,
-            signatureData,
-            marketingConsent,
-            shippingAddress: address,
-            billingAddress: address,
-            stepsOutside:
-              fulfilment === "delivery" ? deliverySurvey.stepsOutside : null,
-            stepsInside:
-              fulfilment === "delivery" ? deliverySurvey.stepsInside : null,
-            scheduledFor: orderDetails.scheduledFor || null,
-            deliveryInstructions:
-              fulfilment === "delivery"
-                ? orderDetails.deliveryInstructions.trim() || null
-                : null,
-            pickupInstructions:
-              fulfilment === "pickup"
-                ? orderDetails.pickupInstructions.trim() || null
-                : null,
-            orderNote: orderDetails.orderNote.trim() || null,
-          },
+          fulfilment: buildFulfilmentPayload(),
         }),
       });
       setCart(checkoutCart);
@@ -3485,20 +3535,30 @@ export const SharedPos = ({
                     >
                       Back
                     </button>
-                    {/* An amount with no label cannot be printed, or accepted. */}
+                    {/*
+                      * Applies the charges before advancing, so the Payment
+                      * step totals the sale the customer will actually be
+                      * charged. Only moves on if the cart came back repriced —
+                      * advancing on a failed write would show a total that
+                      * does not include what was just typed.
+                      */}
                     <button
                       type="button"
-                      disabled={amount(customCharge) > 0 && !customChargeLabel.trim()}
+                      disabled={
+                        busy || (amount(customCharge) > 0 && !customChargeLabel.trim())
+                      }
                       style={{
                         ...s.primaryButton,
                         opacity:
-                          amount(customCharge) > 0 && !customChargeLabel.trim()
+                          busy || (amount(customCharge) > 0 && !customChargeLabel.trim())
                             ? 0.55
                             : 1,
                       }}
-                      onClick={() => setCheckoutStep("signature")}
+                      onClick={async () => {
+                        if (await syncCharges()) setCheckoutStep("signature");
+                      }}
                     >
-                      Continue
+                      {busy ? "Applying…" : "Continue"}
                     </button>
                   </div>
                 </div>
