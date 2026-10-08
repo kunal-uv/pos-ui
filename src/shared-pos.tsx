@@ -971,6 +971,7 @@ export const SharedPos = ({
       setCheckoutOpen(false);
       setSaleDocument(
         buildSaleDocument({
+          tenant,
           cart: checkoutCart,
           order,
           customer,
@@ -3459,6 +3460,7 @@ export const SharedPos = ({
  * object on both, and it is what the customer actually agreed to.
  */
 const buildSaleDocument = (input: {
+  tenant: SharedPosProps["tenant"];
   cart: PosCart;
   order: { number: string; pickupCode?: string | null };
   customer: Customer;
@@ -3523,6 +3525,8 @@ const buildSaleDocument = (input: {
     currencySign,
     terms: store?.terms ?? null,
     accent: input.theme.accent,
+    // 172 prints as RB-INV-00172, the way Appliance Outlet writes AO-INV-00042.
+    invoicePrefix: input.tenant === "rent-buddyz" ? "RB-INV-" : "AO-INV-",
   };
 
   const rental = cart.kind === "RENTAL";
@@ -3590,7 +3594,6 @@ const buildSaleDocument = (input: {
   );
   const baseCurrentPeriod = Math.max(0, cart.subtotal - recurringFeeTotal);
   const exemption = taxExemption(cart);
-  const originalMerchandise = cart.subtotal + cart.discountTotal;
   const preTaxTotal =
     cart.subtotal + cart.feeTotal + cart.shippingTotal + cart.depositTotal;
   const taxLabel = exemption.exempt
@@ -3601,49 +3604,54 @@ const buildSaleDocument = (input: {
   const taxRows = exemption.exempt
     ? null
     : taxBreakdown(session.taxes, cart.taxTotal);
+  // "GST (5%)" prints as "GST 5%", in capitals, like AO's "SALES TAX 9.1%".
+  const plainTaxLabel = (label: string): string =>
+    label.replace("(", "").replace(")", "");
   const totals = [
-    ...(cart.discountTotal > 0
-      ? [{ label: "MSRP / original price", value: originalMerchandise }]
+    // What the goods actually cost: any markdown is already taken off, so there
+    // is no MSRP-then-discount pair to subtract in your head.
+    { label: "Amount", value: rental ? baseCurrentPeriod : cart.subtotal },
+    ...recurringFees.map((fee) => ({ label: fee.name, value: fee.amount })),
+    ...oneTimeFees.map((fee) => ({ label: fee.name, value: fee.amount })),
+    ...(cart.feeTotal > 0 && oneTimeFees.length === 0
+      ? [{ label: "Fees", value: cart.feeTotal }]
       : []),
-    ...(cart.discountTotal > 0
+    ...(cart.shippingTotal > 0
+      ? [{ label: "Delivery", value: cart.shippingTotal }]
+      : []),
+    ...(cart.depositTotal > 0
+      ? [{ label: "Security deposit (refundable)", value: cart.depositTotal }]
+      : []),
+    { label: "Subtotal", value: preTaxTotal, emphasis: true },
+    // One row per configured tax where the store has more than one, so the
+    // printed invoice itemises GST and PST rather than a combined figure.
+    ...(taxRows
+      ? taxRows.map((row) => ({
+          label: plainTaxLabel(row.label),
+          value: row.amount,
+          emphasis: true,
+        }))
+      : [
+          {
+            label: plainTaxLabel(taxLabel),
+            value: cart.taxTotal,
+            emphasis: true,
+          },
+        ]),
+    // A replacement credit pays part of what is owed after tax, as on the
+    // till's own summary, so the printed rows still add up to the TOTAL.
+    ...((cart.creditTotal ?? 0) > 0
       ? [
           {
-            label: "Discount / markdown",
-            value: cart.discountTotal,
+            label: cart.creditLabel || "Exchange credit",
+            value: Math.min(cart.creditTotal ?? 0, preTaxTotal + cart.taxTotal),
             negative: true,
           },
         ]
       : []),
-    {
-      label: rental ? "Base rent - current period" : "Merchandise total",
-      value: rental ? baseCurrentPeriod : cart.subtotal,
-    },
-    ...recurringFees.map((fee) => ({
-      label: `Recurring - ${fee.name}`,
-      value: fee.amount,
-    })),
-    ...oneTimeFees.map((fee) => ({
-      label: `One-time - ${fee.name}`,
-      value: fee.amount,
-    })),
-    ...(cart.feeTotal > 0 && oneTimeFees.length === 0
-      ? [{ label: "One-time fees", value: cart.feeTotal }]
-      : []),
-    ...(cart.shippingTotal > 0
-      ? [{ label: "Delivery fee", value: cart.shippingTotal }]
-      : []),
-    ...(cart.depositTotal > 0
-      ? [{ label: "Refundable security deposit", value: cart.depositTotal }]
-      : []),
-    { label: "Subtotal", value: preTaxTotal },
-    // One row per configured tax where the store has more than one, so the
-    // printed invoice itemises GST and PST rather than a combined figure.
-    ...(taxRows
-      ? taxRows.map((row) => ({ label: row.label, value: row.amount }))
-      : [{ label: taxLabel, value: cart.taxTotal }]),
-    { label: "TOTAL", value: cart.grandTotal, emphasis: true },
-    { label: "DEPOSIT", value: cart.grandTotal },
-    { label: "BALANCE", value: 0, emphasis: true },
+    { label: "Total", value: cart.grandTotal, emphasis: true },
+    { label: "Deposit", value: cart.grandTotal, emphasis: true },
+    { label: "Balance", value: 0, emphasis: true },
   ];
   const agreementRecurringTotal = cart.lines.reduce(
     (total, line) =>
@@ -3689,11 +3697,7 @@ const buildSaleDocument = (input: {
     fulfilment: input.fulfilment,
     soldTo: {
       name: input.customer.name,
-      lines: [
-        ...shipLines,
-        input.customer.email ?? "",
-        input.customer.phone ?? "",
-      ].filter(Boolean) as string[],
+      lines: shipLines,
     },
     shipTo:
       input.fulfilment === "delivery"
@@ -3724,6 +3728,14 @@ const buildSaleDocument = (input: {
         currency: cart.currency || session.currency || "USD",
       },
     ).format(cart.grandTotal)}`,
+    payments: [
+      {
+        label: input.paymentMethod
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (letter) => letter.toUpperCase()),
+        amount: cart.grandTotal,
+      },
+    ],
     notes: input.orderNote.trim() || null,
     deliveryInstructions: input.deliveryInstructions.trim() || null,
     pickupInstructions: input.pickupInstructions.trim() || null,
