@@ -30,6 +30,7 @@ import {
 import type {
   CatalogProduct,
   Customer,
+  HeldCart,
   InventoryUnit,
   PosAddress,
   PosCart,
@@ -373,6 +374,19 @@ export const SharedPos = ({
     setRentalEnd(value);
   };
 
+  /**
+   * What is being taken now, and what the customer handed over.
+   *
+   * Both are strings while the operator types: an empty box is not zero, and a
+   * half-typed "1." is not a number yet.
+   */
+  const [amountInput, setAmountInput] = useState("");
+  const [tenderedInput, setTenderedInput] = useState("");
+
+  /** Sales parked at this till, loaded when the operator opens the list. */
+  const [heldCarts, setHeldCarts] = useState<HeldCart[] | null>(null);
+  const [parkOpen, setParkOpen] = useState(false);
+
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("customer");
   const [signatureOpen, setSignatureOpen] = useState(false);
@@ -384,6 +398,26 @@ export const SharedPos = ({
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [showNewCustomer, setShowNewCustomer] = useState(false);
   const [fulfilment, setFulfilment] = useState<"pickup" | "delivery">("pickup");
+
+  /**
+   * Charges the operator sets on this sale.
+   *
+   * Delivery used to be one fee on the store, applied to every job whatever it
+   * involved. It is priced per sale here instead, with a second labelled
+   * charge beside it for anything that is not delivery — stair carry, old-unit
+   * removal, an after-hours call-out.
+   *
+   * Taxability is per charge because it is a judgement about the job, not a
+   * property of the store; both start taxable, which is how the store fee was
+   * always treated.
+   */
+  const [deliveryCharge, setDeliveryCharge] = useState("");
+  const [deliveryChargeTaxable, setDeliveryChargeTaxable] = useState(true);
+  const [customChargeLabel, setCustomChargeLabel] = useState("");
+  const [customCharge, setCustomCharge] = useState("");
+  const [customChargeTaxable, setCustomChargeTaxable] = useState(true);
+
+  const amount = (value: string): number => Math.max(0, Number(value) || 0);
   const [deliveryAddress, setDeliveryAddress] = useState<PosAddress>(() =>
     blankDeliveryAddress(tenant),
   );
@@ -853,6 +887,40 @@ export const SharedPos = ({
         deliveryAddress.state.trim() &&
         deliveryAddress.postalCode.trim(),
     );
+  const canTakeDeposit = session?.capabilities.partialPayment === true;
+  const canGiveChange = session?.capabilities.cashChange === true;
+  const amountDue = cart ? cart.grandTotal : 0;
+
+  /**
+   * What is actually being taken now. An empty box means the whole amount —
+   * the common case stays a matter of pressing Complete.
+   */
+  const amountNow = (() => {
+    if (!canTakeDeposit || amountInput.trim() === "") return amountDue;
+
+    const parsed = Number(amountInput);
+    if (!Number.isFinite(parsed) || parsed <= 0) return amountDue;
+
+    return Math.min(Math.round(parsed * 100) / 100, amountDue);
+  })();
+
+  const balanceDue = Math.round((amountDue - amountNow) * 100) / 100;
+
+  const tenderedNow = (() => {
+    if (!canGiveChange || paymentMethod !== "cash") return null;
+
+    const parsed = Number(tenderedInput);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+
+    return Math.round(parsed * 100) / 100;
+  })();
+
+  /** Change is only ever what was counted out above what is being applied. */
+  const changeDue =
+    tenderedNow === null
+      ? null
+      : Math.round((tenderedNow - amountNow) * 100) / 100;
+
   const checkoutDisabled =
     busy ||
     !cart?.lines.length ||
@@ -891,9 +959,80 @@ export const SharedPos = ({
     else await document.documentElement.requestFullscreen();
   };
 
+  const canPark = session?.capabilities.holds === true;
+
+  const loadHeldCarts = async () => {
+    try {
+      setHeldCarts(await client.request<HeldCart[]>("/carts/held"));
+    } catch {
+      // A list that will not load is shown as empty rather than as an error
+      // over a sale in progress.
+      setHeldCarts([]);
+    }
+  };
+
+  /**
+   * Parks the open sale. The units on it stay reserved — the stale-cart sweep
+   * deliberately leaves held carts alone — so the machine is still the
+   * customer's while they think about it.
+   */
+  const parkCart = async (name: string | null) => {
+    if (!cart) return;
+
+    try {
+      setBusy(true);
+      setError(null);
+      await client.request(`/carts/${cart.id}/hold`, {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      });
+      // The till always needs a cart to work in, so a fresh one opens behind
+      // the parked sale.
+      const kind = session?.capabilities.transactionKinds[0];
+      if (kind) {
+        setCart(
+          await client.request<PosCart>("/carts", {
+            method: "POST",
+            body: JSON.stringify({ kind }),
+          }),
+        );
+      }
+      setCustomer(null);
+      setParkOpen(false);
+      setHeldCarts(null);
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Unable to park this sale",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resumeHeldCart = async (id: string) => {
+    try {
+      setBusy(true);
+      setError(null);
+      const resumed = await client.request<PosCart>(`/carts/${id}/resume`, {
+        method: "POST",
+      });
+      setCart(resumed);
+      setParkOpen(false);
+      setHeldCarts(null);
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Unable to resume that sale",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const openCheckout = () => {
     setError(null);
     setCheckoutStep("customer");
+    setAmountInput("");
+    setTenderedInput("");
     setSignatureData(null);
     setSignatureDraft(null);
     setMarketingConsent(true);
@@ -948,6 +1087,16 @@ export const SharedPos = ({
           fulfilment: {
             cart: platformCartDetails,
             method: fulfilment,
+            /**
+             * `shippingFee` is the key the cart has always carried for the
+             * delivery amount; it is operator-set now rather than copied from
+             * the store. Zeroed on a pickup — nothing was delivered.
+             */
+            shippingFee: fulfilment === "delivery" ? amount(deliveryCharge) : 0,
+            deliveryChargeTaxable,
+            customCharge: amount(customCharge),
+            customChargeLabel: customChargeLabel.trim() || null,
+            customChargeTaxable,
             signatureData,
             marketingConsent,
             shippingAddress: address,
@@ -978,9 +1127,22 @@ export const SharedPos = ({
            * would be for zero, which is not a payment and which every layer
            * below rightly refuses.
            */
+          /**
+           * ! `amount` is what is APPLIED to the sale; `tendered` is the cash
+           * ! counted out. Sending the note instead of the amount applied would
+           * ! overstate every cash sale by the change given.
+           */
           payments:
             checkoutCart.grandTotal > 0
-              ? [{ method: paymentMethod, amount: checkoutCart.grandTotal }]
+              ? [
+                  {
+                    method: paymentMethod,
+                    amount: Math.min(amountNow, checkoutCart.grandTotal),
+                    ...(tenderedNow !== null && tenderedNow > amountNow
+                      ? { tendered: tenderedNow }
+                      : {}),
+                  },
+                ]
               : [],
         }),
       });
@@ -999,6 +1161,12 @@ export const SharedPos = ({
         buildSaleDocument({
           tenant,
           cart: checkoutCart,
+          amountPaid: Math.min(amountNow, checkoutCart.grandTotal),
+          balanceDue: Math.max(
+            0,
+            Math.round((checkoutCart.grandTotal - amountNow) * 100) / 100,
+          ),
+          tendered: tenderedNow,
           order,
           customer,
           fulfilment,
@@ -1978,6 +2146,42 @@ export const SharedPos = ({
                 boxShadow: "0 -6px 18px rgba(16,22,20,.05)",
               }}
             >
+              {/*
+                * Parking a sale, and picking one back up. Only on a platform
+                * that supports held carts — the button would otherwise promise
+                * something the service refuses.
+                */}
+              {canPark && (
+                <div style={{ display: "flex", gap: 8, marginBottom: 9 }}>
+                  <button
+                    type="button"
+                    disabled={busy || cart.lines.length === 0}
+                    onClick={() => {
+                      const name = window.prompt(
+                        "Park this sale as — a name to find it by",
+                        customer?.name ?? "",
+                      );
+                      // Cancel means cancel; an empty name is still a park.
+                      if (name !== null) void parkCart(name.trim() || null);
+                    }}
+                    style={{ ...s.ghostButton, flex: 1, height: 42 }}
+                  >
+                    Park sale
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => {
+                      setParkOpen(true);
+                      void loadHeldCarts();
+                    }}
+                    style={{ ...s.ghostButton, flex: 1, height: 42 }}
+                  >
+                    Parked sales
+                  </button>
+                </div>
+              )}
+
               <button
                 type="button"
                 disabled={busy}
@@ -2327,6 +2531,99 @@ export const SharedPos = ({
       )}
 
       {/* ------------------------------------------------ checkout */}
+      {parkOpen && (
+        <div
+          role="dialog"
+          aria-label="Parked sales"
+          onClick={() => setParkOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 60,
+            background: "rgba(16,22,20,.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 460,
+              maxHeight: "80vh",
+              overflowY: "auto",
+              background: theme.surface,
+              borderRadius: 16,
+              padding: 18,
+              display: "grid",
+              gap: 10,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: theme.ink }}>
+                Parked sales
+              </span>
+              <div style={{ flex: 1 }} />
+              <button
+                type="button"
+                onClick={() => setParkOpen(false)}
+                style={{
+                  background: "none",
+                  border: 0,
+                  cursor: "pointer",
+                  color: theme.muted,
+                  fontFamily: uiFont,
+                  fontSize: 13,
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            {heldCarts === null && (
+              <span style={{ fontSize: 13, color: theme.muted }}>Loading…</span>
+            )}
+
+            {heldCarts !== null && heldCarts.length === 0 && (
+              <span style={{ fontSize: 13, color: theme.muted }}>
+                Nothing is parked at this till.
+              </span>
+            )}
+
+            {(heldCarts ?? []).map((held) => (
+              <button
+                key={held.id}
+                type="button"
+                disabled={busy}
+                onClick={() => void resumeHeldCart(held.id)}
+                style={{
+                  display: "grid",
+                  gap: 3,
+                  textAlign: "left",
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: `1px solid ${theme.border}`,
+                  background: theme.surface,
+                  cursor: busy ? "not-allowed" : "pointer",
+                  fontFamily: uiFont,
+                }}
+              >
+                <span
+                  style={{ fontSize: 13.5, fontWeight: 800, color: theme.ink }}
+                >
+                  {held.heldName || held.customerName || "Unnamed sale"}
+                </span>
+                <span style={{ fontSize: 11.5, color: theme.muted }}>
+                  {`${held.lineCount} item${held.lineCount === 1 ? "" : "s"} · ${money(held.grandTotal)}`}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {checkoutOpen && (
         <div
           style={s.modalBackdrop}
@@ -2636,10 +2933,12 @@ export const SharedPos = ({
                       {
                         value: "delivery" as const,
                         title: "Delivery",
-                        note:
-                          (session.shippingFee ?? 0) > 0
-                            ? `${money(session.shippingFee ?? 0)} delivery fee`
-                            : "Delivered to the customer.",
+                        /*
+                         * No fee quoted: delivery is priced per job on the
+                         * Details step now, so there is no store rate to show
+                         * and `session.shippingFee` is always 0.
+                         */
+                        note: "Delivered to the customer.",
                       },
                     ].map((option) => {
                       const active = fulfilment === option.value;
@@ -3058,6 +3357,120 @@ export const SharedPos = ({
                       }
                     />
                   </label>
+                  {/* ── Charges the operator sets on this sale ── */}
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 10,
+                      padding: 14,
+                      borderRadius: 14,
+                      border: `1px solid ${theme.border}`,
+                      background: theme.surfaceAlt,
+                    }}
+                  >
+                    <span style={s.label}>CHARGES</span>
+
+                    {/* Delivery only: a counter pickup has nothing to charge for. */}
+                    {fulfilment === "delivery" && (
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                          }}
+                        >
+                          <span style={{ flex: 1, fontSize: 13.5, color: theme.ink }}>
+                            Delivery charge
+                          </span>
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={deliveryCharge}
+                            placeholder="0.00"
+                            onChange={(event) => setDeliveryCharge(event.target.value)}
+                            style={{ ...s.field, width: 120, textAlign: "right" }}
+                          />
+                        </div>
+                        <label
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 7,
+                            fontSize: 12,
+                            color: theme.muted,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={deliveryChargeTaxable}
+                            onChange={(event) =>
+                              setDeliveryChargeTaxable(event.target.checked)
+                            }
+                            style={{ accentColor: theme.accent }}
+                          />
+                          Taxable
+                        </label>
+                      </div>
+                    )}
+
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div
+                        style={{ display: "flex", alignItems: "center", gap: 10 }}
+                      >
+                        <input
+                          type="text"
+                          value={customChargeLabel}
+                          placeholder="Custom charge (e.g. stair carry)"
+                          maxLength={120}
+                          onChange={(event) => setCustomChargeLabel(event.target.value)}
+                          style={{ ...s.field, flex: 1 }}
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={customCharge}
+                          placeholder="0.00"
+                          onChange={(event) => setCustomCharge(event.target.value)}
+                          style={{ ...s.field, width: 120, textAlign: "right" }}
+                        />
+                      </div>
+                      <label
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 7,
+                          fontSize: 12,
+                          color: theme.muted,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={customChargeTaxable}
+                          onChange={(event) =>
+                            setCustomChargeTaxable(event.target.checked)
+                          }
+                          style={{ accentColor: theme.accent }}
+                        />
+                        Taxable
+                      </label>
+                      {/*
+                        * The invoice prints the label, so an amount without one
+                        * would bill the customer for something unidentifiable.
+                        * The platform refuses it too; this says so first.
+                        */}
+                      {amount(customCharge) > 0 && !customChargeLabel.trim() && (
+                        <span style={{ fontSize: 11.5, color: theme.danger }}>
+                          Describe the charge so it can be printed on the invoice.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
                   <div
                     style={{
                       display: "flex",
@@ -3072,9 +3485,17 @@ export const SharedPos = ({
                     >
                       Back
                     </button>
+                    {/* An amount with no label cannot be printed, or accepted. */}
                     <button
                       type="button"
-                      style={s.primaryButton}
+                      disabled={amount(customCharge) > 0 && !customChargeLabel.trim()}
+                      style={{
+                        ...s.primaryButton,
+                        opacity:
+                          amount(customCharge) > 0 && !customChargeLabel.trim()
+                            ? 0.55
+                            : 1,
+                      }}
                       onClick={() => setCheckoutStep("signature")}
                     >
                       Continue
@@ -3197,6 +3618,105 @@ export const SharedPos = ({
                       );
                     })}
                   </div>
+                  {/*
+                    * Taking less than the full amount, and counting out cash.
+                    * Both are platform capabilities: a platform with nowhere to
+                    * carry a balance never sees the deposit box, and one that
+                    * does not record change never sees the tendered box.
+                    */}
+                  {(canTakeDeposit || (canGiveChange && paymentMethod === "cash")) && (
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 9,
+                        borderRadius: 12,
+                        border: `1px solid ${theme.borderSoft}`,
+                        padding: "11px 13px",
+                      }}
+                    >
+                      {canTakeDeposit && (
+                        <label style={{ display: "grid", gap: 5 }}>
+                          <span style={s.label}>
+                            TAKING NOW — LEAVE EMPTY FOR THE FULL {money(amountDue)}
+                          </span>
+                          <input
+                            style={s.field}
+                            type="number"
+                            min={0}
+                            max={amountDue}
+                            step="0.01"
+                            inputMode="decimal"
+                            placeholder={money(amountDue)}
+                            value={amountInput}
+                            onFocus={(event) => event.currentTarget.select()}
+                            onChange={(event) => setAmountInput(event.target.value)}
+                          />
+                        </label>
+                      )}
+
+                      {canGiveChange && paymentMethod === "cash" && (
+                        <label style={{ display: "grid", gap: 5 }}>
+                          <span style={s.label}>CASH COUNTED OUT</span>
+                          <input
+                            style={s.field}
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            inputMode="decimal"
+                            placeholder={money(amountNow)}
+                            value={tenderedInput}
+                            onFocus={(event) => event.currentTarget.select()}
+                            onChange={(event) => setTenderedInput(event.target.value)}
+                          />
+                        </label>
+                      )}
+
+                      {changeDue !== null && changeDue > 0 && (
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            fontSize: 14,
+                            fontWeight: 800,
+                            color: theme.ink,
+                          }}
+                        >
+                          <span>Change due</span>
+                          <span>{money(changeDue)}</span>
+                        </div>
+                      )}
+
+                      {balanceDue > 0 && (
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 3,
+                            borderTop: `1px solid ${theme.borderSoft}`,
+                            paddingTop: 7,
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              fontSize: 14,
+                              fontWeight: 800,
+                              color: theme.ink,
+                            }}
+                          >
+                            <span>Balance on delivery</span>
+                            <span>{money(balanceDue)}</span>
+                          </div>
+                          <span style={{ fontSize: 11.5, color: theme.muted }}>
+                            {fulfilment === "delivery"
+                              ? "Printed on the delivery slip for the driver to collect."
+                              : "A counter pickup must be paid in full — switch to delivery or take the whole amount."}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div style={{ display: "flex", gap: 10 }}>
                     <button
                       type="button"
@@ -3593,6 +4113,11 @@ export const SharedPos = ({
 const buildSaleDocument = (input: {
   tenant: SharedPosProps["tenant"];
   cart: PosCart;
+  /** What was applied to the sale now, and what the driver still collects. */
+  amountPaid?: number;
+  balanceDue?: number;
+  /** Cash counted out, when change was given. */
+  tendered?: number | null;
   order: { number: string; pickupCode?: string | null };
   customer: Customer;
   fulfilment: "pickup" | "delivery";
@@ -3751,6 +4276,7 @@ const buildSaleDocument = (input: {
     cart.feeTotal +
     (cart.warrantyTotal ?? 0) +
     cart.shippingTotal +
+    (cart.customTotal ?? 0) +
     cart.depositTotal;
   const taxLabel = exemption.exempt
     ? `Tax exempt${exemption.reason ? ` - ${exemption.reason}` : ""}`
@@ -3763,6 +4289,16 @@ const buildSaleDocument = (input: {
   // "GST (5%)" prints as "GST 5%", in capitals, like AO's "SALES TAX 9.1%".
   const plainTaxLabel = (label: string): string =>
     label.replace("(", "").replace(")", "");
+
+  /**
+   * What was taken now. Defaults to the whole sale, so a document built without
+   * these figures reads exactly as it did before deposits existed.
+   */
+  const paidNow = input.amountPaid ?? cart.grandTotal;
+  const changeGiven =
+    input.tendered != null
+      ? Math.max(0, Math.round((input.tendered - paidNow) * 100) / 100)
+      : 0;
   const totals = [
     // What the goods actually cost: any markdown is already taken off, so there
     // is no MSRP-then-discount pair to subtract in your head.
@@ -3777,6 +4313,14 @@ const buildSaleDocument = (input: {
       : []),
     ...(cart.shippingTotal > 0
       ? [{ label: "Delivery", value: cart.shippingTotal }]
+      : []),
+    // Printed under its own label — an unexplained amount on an invoice is
+    // what the label exists to prevent.
+    ...((cart.customTotal ?? 0) > 0
+      ? [{
+        label: cart.customChargeLabel?.trim() || "Additional charge",
+        value: cart.customTotal ?? 0,
+      }]
       : []),
     ...(cart.depositTotal > 0
       ? [{ label: "Security deposit (refundable)", value: cart.depositTotal }]
@@ -3868,10 +4412,10 @@ const buildSaleDocument = (input: {
     paymentNote: rental
       ? "Future-period tax is calculated when each recurring payment is billed."
       : null,
-    // A till takes the whole amount before the goods leave, so a slip
-    // normally prints zero. It is still printed: a non-zero balance is
-    // exactly what the person at the door needs to see.
-    balance: 0,
+    // A till usually takes the whole amount before the goods leave, so this
+    // normally prints zero. When a delivery was booked on a deposit it is
+    // exactly what the person at the door has to collect.
+    balance: input.balanceDue ?? 0,
     term:
       rental && tenure
         ? `${tenure} month${tenure === 1 ? "" : "s"}${
@@ -3886,14 +4430,25 @@ const buildSaleDocument = (input: {
         style: "currency",
         currency: cart.currency || session.currency || "USD",
       },
-    ).format(cart.grandTotal)}`,
+    ).format(paidNow)}`,
     payments: [
       {
         label: input.paymentMethod
           .replace(/_/g, " ")
           .replace(/\b\w/g, (letter) => letter.toUpperCase()),
-        amount: cart.grandTotal,
+        amount: paidNow,
       },
+      /**
+       * Cash counted out and the change handed back, each on its own line. A
+       * customer checking the slip against the notes in their hand should find
+       * both figures on it.
+       */
+      ...(changeGiven > 0
+        ? [
+            { label: "Cash tendered", amount: input.tendered ?? 0 },
+            { label: "Change given", amount: changeGiven },
+          ]
+        : []),
     ],
     notes: input.orderNote.trim() || null,
     deliveryInstructions: input.deliveryInstructions.trim() || null,
@@ -4638,6 +5193,7 @@ const PaymentSummary = ({
     cart.feeTotal +
     (cart.warrantyTotal ?? 0) +
     cart.shippingTotal +
+    (cart.customTotal ?? 0) +
     cart.depositTotal;
   const taxLabel = exemption.exempt
     ? `Tax exempt${exemption.reason ? ` · ${exemption.reason}` : ""}`
@@ -4699,6 +5255,13 @@ const PaymentSummary = ({
       )}
       {(cart.warrantyTotal ?? 0) > 0 && (
         <Row theme={theme} label="Extended warranty" value={money(cart.warrantyTotal ?? 0)} />
+      )}
+      {(cart.customTotal ?? 0) > 0 && (
+        <Row
+          theme={theme}
+          label={cart.customChargeLabel?.trim() || "Additional charge"}
+          value={money(cart.customTotal ?? 0)}
+        />
       )}
       {cart.shippingTotal > 0 && (
         <Row

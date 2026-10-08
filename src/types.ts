@@ -42,6 +42,18 @@ export interface PosSession {
     securityDeposits: boolean;
     holds: boolean;
     splitPayments: boolean;
+    /**
+     * The sale may complete on a deposit, with the balance collected when the
+     * machine is delivered. Absent or false and the till takes the full amount,
+     * exactly as it always has.
+     */
+    partialPayment?: boolean;
+    /**
+     * Cash may be counted out over the amount due and change given. The payment
+     * recorded is what was APPLIED; the note handed across is recorded beside it
+     * so the receipt can show both.
+     */
+    cashChange?: boolean;
     signature: boolean;
     /** The New Customer form proves a new customer's email with an emailed code. */
     customerEmailVerification?: boolean;
@@ -131,6 +143,9 @@ export interface PosCart {
   taxTotal: number;
   feeTotal: number;
   shippingTotal: number;
+  /** The operator's labelled charge, if the sale carried one. */
+  customTotal?: number;
+  customChargeLabel?: string | null;
   depositTotal: number;
   /**
    * A credit the platform already holds for this customer - the value of a
@@ -173,6 +188,20 @@ export interface PosCart {
     } | null;
   }>;
   payments: Array<{ id: string; method: string; amount: number }>;
+}
+
+/** A sale parked at this till, as the list of them reports it. */
+export interface HeldCart {
+  id: string;
+  heldName: string | null;
+  kind: "SALE" | "RENTAL";
+  customerName: string | null;
+  lineCount: number;
+  grandTotal: number;
+  currency: string;
+  /** Who parked it — a parked sale belongs to the till, not to one operator. */
+  parkedBy: string;
+  updatedAt: string;
 }
 
 export interface SharedPosProps {
