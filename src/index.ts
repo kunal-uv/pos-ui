@@ -1,6 +1,7 @@
 export { SharedPos } from "./shared-pos";
 export { PosClient } from "./client";
 export { PosSaleDocuments } from "./sale-documents";
+export { CommissionHint } from "./commission-hint";
 export {
 	buildDeliverySlipHTML,
 	buildInvoiceHTML,

@@ -36,6 +36,7 @@ import type {
   PosSession,
   SharedPosProps,
 } from "./types";
+import { CommissionHint } from "./commission-hint";
 
 /**
  * `crypto.randomUUID` only exists on a secure origin. A till reached over plain
@@ -295,6 +296,7 @@ export const SharedPos = ({
   creditReference = null,
   onCreditApplied,
   onCreditRejected,
+  commissionPreview,
 }: SharedPosProps) => {
   const theme = useMemo<PosTheme>(() => {
     const base = themeForTenant(tenant);
@@ -2225,6 +2227,31 @@ export const SharedPos = ({
                       : ""}
                   </span>
                 </div>
+              )}
+
+              {/*
+                * What this line pays the person adding it. Shown only when the
+                * host supplies an answer, so a platform without commissions —
+                * or an operator whose platform will not tell them — sees
+                * nothing rather than an empty box.
+                */}
+              {commissionPreview && selected && (
+                <CommissionHint
+                  theme={theme}
+                  money={money}
+                  preview={commissionPreview}
+                  input={{
+                    productId: selected.id,
+                    unitId: unitId || null,
+                    // The unit's own rate when there is one: stock of one model
+                    // is not interchangeable, and the line is priced from the
+                    // machine actually being handed over.
+                    unitPrice:
+                      units.find((unit) => unit.id === unitId)?.price ??
+                      selected.price,
+                    tenure: rental ? tenure : 1,
+                  }}
+                />
               )}
             </div>
 

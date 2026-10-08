@@ -221,4 +221,54 @@ export interface SharedPosProps {
   onCreditApplied?: (reference: string) => void;
   /** Called when the credit cannot be applied, with the reason to show. */
   onCreditRejected?: (reference: string, reason: string) => void;
+  /**
+   * Answers "what will I earn on this?" while a line is being priced.
+   *
+   * ! Supplied by the HOST, not called by this package. Commission is a payroll
+   * ! fact that lives in each platform's own API behind its own permissions,
+   * ! and the till talks only to the POS service - so the host passes a function
+   * ! that asks its own backend, exactly as the AO till injects its platform
+   * ! calls. A host that omits this shows no panel at all, which is what a
+   * ! platform without commissions should show.
+   *
+   * ! The answer must come from the SERVER, computed by the same code that
+   * ! writes the ledger at checkout. A second copy of the rules in the browser
+   * ! is right until the first rate change, and then it quietly lies to the
+   * ! person whose pay it describes.
+   *
+   * Returning `null` means "no answer" and the panel stays hidden. It must not
+   * throw: a hint that fails is left out, never shown as a zero.
+   */
+  commissionPreview?: (
+    input: CommissionPreviewInput,
+  ) => Promise<CommissionPreview | null>;
+}
+
+/** What the till knows about the line being priced. */
+export interface CommissionPreviewInput {
+  productId: string;
+  /** Null on a platform that does not track individual units. */
+  unitId: string | null;
+  /** The rent or price per period, as the till would send it to the cart. */
+  unitPrice: number;
+  /** Months of agreement. 1 for an outright sale. */
+  tenure: number;
+}
+
+export interface CommissionPreviewComponent {
+  /** `commission`, `overage`, `model_bonus`, ... — whatever the platform calls it. */
+  kind: string;
+  /** What the rate applied to, or null for a flat bonus. */
+  basisAmount: number | null;
+  /** The percentage used, or null for a flat bonus. */
+  rate: number | null;
+  amount: number;
+  /** One line of plain English: how this part was arrived at. */
+  note: string;
+}
+
+export interface CommissionPreview {
+  total: number;
+  currency?: string;
+  components: CommissionPreviewComponent[];
 }
