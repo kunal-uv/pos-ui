@@ -32,6 +32,8 @@ export interface PosBusiness {
   currencySign?: string;
   /** The store's own terms, printed verbatim in the terms band. */
   terms?: string | null;
+  /** Prefix for a plain numeric order number: 172 prints as "RB-INV-00172". */
+  invoicePrefix?: string | null;
   /** Document accent, used for the balance line and negative amounts. */
   accent?: string;
 }
@@ -50,6 +52,8 @@ export interface PosDocumentItem {
   grade?: string | null;
   /** Plain words for the grade ("Good", "Like new"), printed under the letter. */
   gradeLabel?: string | null;
+  /** An extended-warranty line: on the invoice, never on a pickup or delivery slip. */
+  warranty?: boolean;
   /** Extra lines under the description: rental period, add-ons, condition. */
   details?: string[];
   unitPrice?: number;
@@ -139,6 +143,20 @@ export interface PosHeaderOptions {
   numberLabel?: string;
 }
 
+/**
+ * The invoice number as it prints: a plain number is padded to five digits and
+ * given the business's prefix ("RB-INV-00172"), exactly as Appliance Outlet
+ * writes "AO-INV-00042". Anything that is not a plain number prints as given.
+ */
+export const printInvoiceNumber = (value: string, business: PosBusiness): string => {
+  const raw = String(value ?? "").trim();
+  // "172", "RB-172" and "ORD-172" are all order 172; a Stripe invoice number
+  // ("VR9UD2OI-0077") is not a plain order number and prints as given.
+  const plain = /^(?:[A-Za-z]{1,4}-)?([0-9]+)$/.exec(raw);
+  if (!plain) return raw;
+  return `${business.invoicePrefix ?? "INV-"}${plain[1].padStart(5, "0")}`;
+};
+
 export const modernHeader = (options: PosHeaderOptions): string => {
   const { business } = options;
   const registration =
@@ -166,7 +184,7 @@ export const modernHeader = (options: PosHeaderOptions): string => {
 		</div>
 	</header>
 	<div class="modern-meta">
-		<div><strong>${printText(options.numberLabel ?? "INVOICE #")}</strong> ${printText(options.number)} <strong>DATE</strong> ${printText(options.date)}</div>
+		<div><strong>${printText(options.numberLabel ?? "INVOICE #")}</strong> ${printText(printInvoiceNumber(options.number, business))} <strong>INVOICE DATE</strong> ${printText(options.date)}</div>
 		<div><strong>${printText(options.dateLabel)}</strong> ${printText(options.dateValue || "To be scheduled")}</div>
 	</div>
 	<div class="modern-parties">
@@ -177,7 +195,8 @@ export const modernHeader = (options: PosHeaderOptions): string => {
 
 const itemDescription = (item: PosDocumentItem): string => {
   const metadata = [
-    item.reference ? `Serial ${item.reference}` : "",
+    // "-" is the placeholder in the ITEM # column, not a serial number.
+    item.reference && item.reference !== "-" ? `Serial ${item.reference}` : "",
     ...(item.details ?? []),
   ].filter(Boolean);
 
@@ -189,15 +208,10 @@ const itemDescription = (item: PosDocumentItem): string => {
 };
 
 /** The priced table: what the customer is being charged for, itemised. */
-/**
- * What the GRADE column prints. An assessed unit has a letter, A to D. A unit
- * nobody has graded yet reports "UNASSESSED", which is a state and not a grade,
- * so it reads "Not assessed". A line with no unit at all prints a dash.
- */
+/** What the GRADE column prints: the A-D letter, or a dash when there is none. */
 export const printGrade = (grade: string | null | undefined): string => {
   const code = String(grade ?? "").trim().toUpperCase();
-  if (!code) return "-";
-  return /^[A-D]$/.test(code) ? code : "Not assessed";
+  return /^[A-D]$/.test(code) ? code : "-";
 };
 
 export const modernInvoiceItems = (
@@ -206,8 +220,8 @@ export const modernInvoiceItems = (
 ): string => `
 	<table class="modern-items modern-invoice-items">
 		<thead><tr>
-			<th class="qty">QTY</th><th>DESCRIPTION</th><th>REFERENCE</th>
-			<th class="center">GRADE</th><th>RATE</th><th>AMOUNT</th>
+			<th>QTY</th><th>DESCRIPTION</th><th>ITEM #</th>
+			<th>GRADE</th><th>UNIT PRICE</th><th>AMOUNT</th>
 		</tr></thead>
 		<tbody>
 			${items
@@ -216,7 +230,7 @@ export const modernInvoiceItems = (
 				<td class="qty">${printText(item.quantity)}</td>
 				<td>${itemDescription(item)}</td>
 				<td>${printText(item.reference)}</td>
-				<td class="center">${printText(printGrade(item.grade))}${/^[A-Da-d]$/.test(String(item.grade ?? "")) && item.gradeLabel ? `<div class="modern-item-detail">${printText(item.gradeLabel)}</div>` : ""}</td>
+				<td class="center">${printText(printGrade(item.grade))}</td>
 				<td class="money">${item.unitPrice === undefined ? "" : printMoney(item.unitPrice, business)}</td>
 				<td class="money">${item.amount === undefined ? "" : printMoney(item.amount, business)}</td>
 			</tr>`,
@@ -240,6 +254,7 @@ export const modernSlipItems = (
 		</tr></thead>
 		<tbody>
 			${items
+        .filter((item) => !item.warranty)
         .map(
           (item) => `<tr>
 				<td class="qty">${printText(item.quantity)}</td>
@@ -266,7 +281,7 @@ export const modernTotals = (
         ]
           .filter(Boolean)
           .join(" ")}">
-			<td>${printText(row.label)}</td>
+			<td>${printText(String(row.label).toUpperCase())}</td>
 			<td>${printMoney(row.negative ? -Math.abs(row.value) : row.value, business)}</td>
 		</tr>`,
       )
@@ -321,7 +336,7 @@ export const modernInstructions = (
 export const modernTerms = (business: PosBusiness): string => {
   const terms = String(business.terms ?? "").trim();
   if (!terms) return "";
-  return `<div class="modern-invoice-terms">${terms
+  return `<div class="modern-terms-text">${terms
     .split(/\n\s*\n/)
     .map(
       (paragraph) =>
@@ -338,7 +353,6 @@ export const modernStyles = (business: PosBusiness): string => {
  * A sheet margin of our own: with none set, a print dialog on minimal margins
  * put the document title against - and past - the top edge of the page.
  */
-@page { size: auto; margin: 0.5in 0.45in 0.5in; }
 html, body { margin: 0; padding: 0; background: #fff; }
 body {
 	font-family: Arial, Helvetica, sans-serif;
@@ -348,13 +362,13 @@ body {
 	-webkit-print-color-adjust: exact;
 	print-color-adjust: exact;
 }
-.modern-document { width: 100%; max-width: 7.35in; margin: 0 auto; padding-top: 0.2in; }
+.modern-document { width: 100%; max-width: 7.35in; margin: 0 auto; }
 .modern-header {
 	display: grid;
 	grid-template-columns: 1fr 1fr;
 	gap: 0.35in;
 	align-items: start;
-	padding: 0 0.11in 0.18in;
+	padding: 0.18in 0.11in 0.18in;
 	border-bottom: 2px solid #111;
 }
 .modern-wordmark { font-size: 18pt; font-weight: 900; letter-spacing: 0.2px; line-height: 1; white-space: nowrap; }
@@ -363,7 +377,7 @@ body {
 .modern-lockup img { display: block; max-height: 0.62in; max-width: 2.6in; width: auto; object-fit: contain; }
 .modern-store-address { margin-top: 7px; font-size: 7.6pt; line-height: 1.35; }
 .modern-document-heading { text-align: right; font-size: 7.4pt; line-height: 1.45; }
-.modern-document-heading h1 { margin: 0 0 6px; font-size: 16pt; letter-spacing: 3.2px; line-height: 1; }
+.modern-document-heading h1 { margin: -2px 0 6px; font-size: 16pt; letter-spacing: 3.2px; line-height: 1; }
 .modern-registration { margin-top: 5px; font-weight: 700; }
 .modern-meta { display: flex; justify-content: space-between; gap: 18px; padding: 16px 10px 15px; font-size: 8pt; }
 .modern-meta strong { margin-right: 3px; }
@@ -382,13 +396,12 @@ body {
 .modern-items .money { text-align: right; white-space: nowrap; }
 .modern-item-detail { margin-top: 2px; color: #333; font-size: 6.8pt; line-height: 1.35; }
 .modern-invoice-items th:nth-child(1) { width: 7%; }
-.modern-invoice-items th:nth-child(2) { width: 43%; }
-.modern-invoice-items th:nth-child(3) { width: 15%; }
-.modern-invoice-items th:nth-child(4) { width: 12%; }
+.modern-invoice-items th:nth-child(2) { width: 46%; }
+.modern-invoice-items th:nth-child(3) { width: 16%; }
+.modern-invoice-items th:nth-child(4) { width: 8%; }
 .modern-invoice-items th:nth-child(5) { width: 12%; text-align: right; }
 .modern-invoice-items th:nth-child(6) { width: 11%; text-align: right; }
 .modern-invoice-items td { padding-top: 6px; padding-bottom: 6px; }
-.modern-invoice-items td:nth-child(4) { padding-left: 5px; padding-right: 5px; overflow-wrap: anywhere; word-break: break-word; font-size: 6.5pt; }
 .modern-slip-items th:nth-child(1) { width: 8%; }
 .modern-slip-items th:nth-child(2) { width: 56%; }
 .modern-slip-items th:nth-child(3) { width: 18%; }
@@ -409,6 +422,7 @@ body {
 .modern-summary-area { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 36px; padding: 19px 10px 0; }
 .modern-payment-title { font-size: 7pt; font-weight: 800; letter-spacing: 1px; }
 .modern-payment-line { margin-top: 4px; font-size: 7.2pt; }
+.modern-payment-registration { margin-top: 11px; font-weight: 700; }
 .modern-recurring-title { margin-top: 14px; font-size: 7pt; font-weight: 800; letter-spacing: 1px; }
 .modern-recurring-title + .modern-totals { margin-top: 4px; }
 .modern-payment-note { margin-top: 5px; color: #666; font-size: 6.4pt; line-height: 1.35; }
@@ -434,7 +448,7 @@ body {
 .modern-charge-table { width: 100%; margin-top: 7px; border-collapse: collapse; font-size: 6.5pt; }
 .modern-charge-table td { padding: 6px; border: 1px solid #969696; }
 .modern-charge-table td:last-child { width: 42%; text-align: right; white-space: nowrap; }
-@page { size: letter; margin: 0 0.55in 0.45in; }
+@page { size: letter; margin: 0.22in 0.55in 0.45in; }
 @media print { body { padding: 0; } .modern-document { max-width: none; } }
 `;
 };

@@ -86,6 +86,18 @@ export interface Customer {
   phone: string | null;
 }
 
+/** A warranty plan as the platform offers it with a product. */
+export interface PosWarrantyPlan {
+  id: string;
+  title: string;
+  kind: string;
+  price: number;
+  minPrice: number;
+  maxPrice: number;
+  durationMonths: number;
+  terms: string | null;
+}
+
 export interface PosAddress {
   id?: string;
   line1: string;
@@ -125,6 +137,8 @@ export interface PosCart {
    * machine handed back over the counter - applied to this sale. Never more
    * than the sale is worth.
    */
+  /** Extended warranty plans on the sale, taxed with it. */
+  warrantyTotal?: number;
   creditTotal?: number;
   creditLabel?: string | null;
   creditReference?: string | null;
@@ -147,6 +161,10 @@ export interface PosCart {
     rentalStart: string | null;
     rentalEnd: string | null;
     rentalTenure: number | null;
+    /** The warranty plan sold with this line, and what it costs for the quantity. */
+    warranty?: (PosWarrantyPlan & { total: number }) | null;
+    /** Plans the product offers that apply at this line's rent. */
+    availableWarranties?: PosWarrantyPlan[];
     /** `{ product, unit }` as the service snapshotted it when the line was priced. */
     metadata?: {
       product?: Record<string, unknown>;

@@ -41,6 +41,11 @@ export interface PosSaleDocument {
   /** Future rental commitment, kept separate from the amount paid today. */
   recurringSummary?: PosDocumentTotalRow[];
   paymentNote?: string | null;
+  /**
+   * One line per payment under METHOD OF PAYMENT, "Cash - $ 5.60". A line with
+   * no amount prints the method alone.
+   */
+  payments?: Array<{ label: string; amount?: number }>;
   /** Still owed when the goods are handed over; normally zero at a till. */
   balance: number;
   /** What the rental agreement runs for, printed under the dates. */
@@ -67,8 +72,8 @@ export interface PosSaleDocument {
   pickupCode?: string | null;
 }
 
-const numberLabel = (document: PosSaleDocument) =>
-  document.kind === "RENTAL" ? "AGREEMENT #" : "INVOICE #";
+/** Appliance Outlet's documents are all numbered "INVOICE #", rentals included. */
+const numberLabel = (_document: PosSaleDocument) => "INVOICE #";
 
 const header = (document: PosSaleDocument, title: string, dateLabel: string) =>
   modernHeader({
@@ -85,15 +90,26 @@ const header = (document: PosSaleDocument, title: string, dateLabel: string) =>
 
 export const buildInvoiceHTML = (document: PosSaleDocument): string => {
   const { business } = document;
+  const paymentLines = document.payments?.length
+    ? document.payments.map((payment) =>
+        payment.amount === undefined
+          ? printText(payment.label)
+          : `${printText(payment.label)} - ${printMoney(payment.amount, business)}`,
+      )
+    : [printText(document.tender ?? "Taken at the counter")];
+  const registration =
+    business.registrationLabel && business.registrationNumber
+      ? `<div class="modern-payment-registration">${printText(business.registrationLabel)} ${printText(business.registrationNumber)}</div>`
+      : "";
   const body = `
-	${header(document, document.kind === "RENTAL" ? "RENTAL INVOICE" : "INVOICE", document.fulfilment === "delivery" ? "DELIVERY DATE" : "COLLECTED")}
+	${header(document, "INVOICE", "DELIVERY DATE")}
 	${modernInvoiceItems(document.items, business)}
-	<div class="modern-summary-area">
+	<section class="modern-summary-area">
 		<div>
 			<div class="modern-payment-title">METHOD OF PAYMENT</div>
-			<div class="modern-payment-line">${printText(document.tender ?? "Taken at the counter")}</div>
+			${paymentLines.map((line) => `<div class="modern-payment-line">${line}</div>`).join("")}
 			${document.term ? `<div class="modern-payment-line">${printText(document.term)}</div>` : ""}
-		${document.notes ? `<div class="modern-payment-line">${printText(document.notes)}</div>` : ""}
+			${registration}
 			${
         document.recurringSummary?.length
           ? `
@@ -105,21 +121,18 @@ export const buildInvoiceHTML = (document: PosSaleDocument): string => {
       }
 		</div>
 		${modernTotals(document.totals, business)}
-	</div>
-	${modernTerms(business)}
-	<div class="modern-invoice-signature">
-		<div>
-			${document.signature ? `<img src="${printText(document.signature)}" alt="" onerror="this.style.display='none';" />` : ""}
-			CUSTOMER SIGNATURE
+	</section>
+	${document.notes ? `<div class="modern-agreement"><strong>NOTE:</strong> ${printText(document.notes)}</div>` : ""}
+	<section class="modern-invoice-terms">
+		${modernTerms(business)}
+		<div class="modern-invoice-signature">
+			<div>I agree with rental &amp; delivery terms &amp; conditions.</div>
+			<div>CUSTOMER SIGNATURE${document.signature ? `<img src="${printText(document.signature)}" alt="" onerror="this.style.display='none';" />` : ""}</div>
 		</div>
-		<div>DATE</div>
-	</div>`;
+		<div class="modern-thank-you">THANK YOU FOR SUPPORTING OUR BUSINESS, SEE YOU AGAIN</div>
+	</section>`;
 
-  return documentShell(
-    document.kind === "RENTAL" ? "Rental Invoice" : "Invoice",
-    body,
-    business,
-  );
+  return documentShell("Invoice", body, business);
 };
 
 export const buildPickupSlipHTML = (document: PosSaleDocument): string => {
