@@ -601,6 +601,26 @@ export const SharedPos = ({
     [visible],
   );
 
+  // Search as the cashier types: once they pause, not on every keystroke.
+  const searchedTerm = useRef(search);
+  const categoryRef = useRef(categoryId);
+  categoryRef.current = categoryId;
+  useEffect(() => {
+    if (search === searchedTerm.current) return;
+    const timer = window.setTimeout(() => {
+      searchedTerm.current = search;
+      void loadCatalog(search, categoryRef.current);
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [search, loadCatalog]);
+
+  // Errors appear as a toast and clear themselves.
+  useEffect(() => {
+    if (!error) return;
+    const timer = window.setTimeout(() => setError(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [error]);
+
   useEffect(() => {
     if (customerSearch.trim().length < 2) {
       setCustomers([]);
@@ -1367,13 +1387,19 @@ export const SharedPos = ({
         <div
           role="alert"
           style={{
-            flex: "none",
+            position: "fixed",
+            top: 16,
+            right: 16,
+            zIndex: 1000,
+            width: "min(420px, calc(100vw - 32px))",
             display: "flex",
             alignItems: "center",
             gap: 10,
-            padding: "9px 16px",
+            padding: "12px 14px",
+            borderRadius: 12,
+            boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
             background: theme.dangerBg,
-            borderBottom: `1px solid ${theme.dangerBorder}`,
+            border: `1px solid ${theme.dangerBorder}`,
             color: theme.danger,
             fontSize: 13,
             fontWeight: 600,
@@ -1483,6 +1509,7 @@ export const SharedPos = ({
             <form
               onSubmit={(event) => {
                 event.preventDefault();
+                searchedTerm.current = search;
                 loadCatalog(search, categoryId);
               }}
               style={{
@@ -1525,6 +1552,7 @@ export const SharedPos = ({
                   aria-label="Clear search"
                   onClick={() => {
                     setSearch("");
+                    searchedTerm.current = "";
                     loadCatalog("", categoryId);
                   }}
                   style={{
@@ -1542,23 +1570,6 @@ export const SharedPos = ({
                   <Icon path="M18 6L6 18M6 6l12 12" size={15} width={2.4} />
                 </button>
               )}
-              <button
-                type="submit"
-                style={{
-                  height: 32,
-                  padding: "0 16px",
-                  borderRadius: 9,
-                  border: 0,
-                  cursor: "pointer",
-                  background: theme.accent,
-                  color: "#fff",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  fontFamily: uiFont,
-                }}
-              >
-                Search
-              </button>
             </form>
           </div>
 
@@ -3654,7 +3665,8 @@ const buildSaleDocument = (input: {
     registrationLabel: store?.registrationLabel ?? null,
     registrationNumber: store?.registrationNumber ?? null,
     currencySign,
-    terms: store?.terms ?? null,
+    // The store's website terms are not printed on the invoice.
+    terms: null,
     accent: input.theme.accent,
     // 172 prints as RB-INV-00172, the way Appliance Outlet writes AO-INV-00042.
     invoicePrefix: input.tenant === "rent-buddyz" ? "RB-INV-" : "AO-INV-",

@@ -13,8 +13,8 @@ import { uiFont, type PosTheme } from "./theme";
 export const TillLoader = ({
   theme,
   height,
-  title = "Opening the till",
-  subtitle = "Loading products, customers and store settings…",
+  title = "Opening POS",
+  subtitle = "Please wait…",
 }: {
   theme: PosTheme;
   /** CSS height of the area to centre in; the till passes its frame height. */
