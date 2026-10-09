@@ -1390,7 +1390,8 @@ export const SharedPos = ({
             position: "fixed",
             top: 16,
             right: 16,
-            zIndex: 1000,
+            // Above every modal (the highest is 1300), so it is never dimmed behind one.
+            zIndex: 2000,
             width: "min(420px, calc(100vw - 32px))",
             display: "flex",
             alignItems: "center",
