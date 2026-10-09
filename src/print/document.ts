@@ -54,6 +54,8 @@ export interface PosDocumentItem {
   gradeLabel?: string | null;
   /** An extended-warranty line: on the invoice, never on a pickup or delivery slip. */
   warranty?: boolean;
+  /** Which slip this item goes on; absent means both (orders from before). */
+  fulfilment?: "pickup" | "delivery";
   /** Extra lines under the description: rental period, add-ons, condition. */
   details?: string[];
   unitPrice?: number;

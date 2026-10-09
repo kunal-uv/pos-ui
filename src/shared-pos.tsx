@@ -824,13 +824,71 @@ export const SharedPos = ({
     }
   };
 
+  /** How an item goes out: its own choice, else the order's. */
+  const lineMethod = (line: { fulfilment?: "pickup" | "delivery" | null }) =>
+    line.fulfilment ?? fulfilment;
+
+  /**
+   * Chooses how one item goes out. The order's own method follows: it is
+   * delivery as soon as any item is delivered (the address and the delivery
+   * charge hang off it), and pickup only when every item is.
+   */
+  const chooseLineMethod = async (
+    lineId: string,
+    method: "pickup" | "delivery",
+  ) => {
+    if (!cart) return;
+    const lines = cart.lines.map((line) => ({
+      ...line,
+      fulfilment: line.id === lineId ? method : line.fulfilment,
+    }));
+    const order = lines.some((line) => lineMethod(line) === "delivery")
+      ? "delivery"
+      : "pickup";
+    const previous = fulfilment;
+    try {
+      setBusy(true);
+      setError(null);
+      let next = await client.request<PosCart>(
+        `/carts/${cart.id}/lines/${lineId}`,
+        { method: "PATCH", body: JSON.stringify({ fulfilment: method }) },
+      );
+      if (order !== previous) {
+        setFulfilment(order);
+        next = await client.request<PosCart>(`/carts/${cart.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            fulfilment: { ...(next.fulfilment ?? {}), method: order },
+          }),
+        });
+      }
+      setCart(next);
+    } catch (reason) {
+      setFulfilment(previous);
+      setError(
+        reason instanceof Error ? reason.message : "Unable to update the item",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const changeFulfilment = async (method: "pickup" | "delivery") => {
-    if (!cart || method === fulfilment) return;
+    if (!cart) return;
+    const overridden = cart.lines.filter((line) => line.fulfilment);
+    // Choosing for the whole order again also clears any per-item choices.
+    if (method === fulfilment && overridden.length === 0) return;
     const previous = fulfilment;
     setFulfilment(method);
     try {
       setBusy(true);
       setError(null);
+      for (const line of overridden) {
+        await client.request<PosCart>(`/carts/${cart.id}/lines/${line.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ fulfilment: null }),
+        });
+      }
       setCart(
         await client.request<PosCart>(`/carts/${cart.id}`, {
           method: "PATCH",
@@ -3048,6 +3106,82 @@ export const SharedPos = ({
 
               {checkoutStep === "shipping" && (
                 <div style={{ display: "grid", gap: 12 }}>
+                  {/*
+                    * Per item, because one order may mix them: the customer
+                    * takes the microwave today and has the fridge delivered
+                    * later. The choice below is the order's default and where
+                    * it is delivered TO.
+                    */}
+                  {cart && cart.lines.length > 1 && (
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 8,
+                        padding: 14,
+                        borderRadius: 13,
+                        border: `1.5px solid ${theme.border}`,
+                      }}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 700, color: theme.ink }}>
+                        How is each item going out?
+                      </span>
+                      {cart.lines.map((line) => {
+                        const method = lineMethod(line);
+                        return (
+                          <div
+                            key={line.id}
+                            style={{ display: "flex", alignItems: "center", gap: 10 }}
+                          >
+                            <span
+                              style={{
+                                flex: 1,
+                                minWidth: 0,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                fontSize: 13,
+                                color: theme.inkSoft,
+                              }}
+                            >
+                              {line.name}
+                              {line.serial && (
+                                <span style={{ marginLeft: 8, color: theme.mutedLight }}>
+                                  {line.serial}
+                                </span>
+                              )}
+                            </span>
+                            <div style={{ display: "flex", gap: 6, flex: "none" }}>
+                              {(["delivery", "pickup"] as const).map((option) => {
+                                const active = method === option;
+                                return (
+                                  <button
+                                    key={option}
+                                    type="button"
+                                    disabled={busy}
+                                    aria-pressed={active}
+                                    onClick={() => void chooseLineMethod(line.id, option)}
+                                    style={{
+                                      padding: "4px 12px",
+                                      borderRadius: 10,
+                                      cursor: busy ? "not-allowed" : "pointer",
+                                      fontFamily: uiFont,
+                                      fontSize: 12,
+                                      fontWeight: 700,
+                                      border: `1.5px solid ${active ? theme.accent : theme.border}`,
+                                      background: active ? theme.accentSoft : theme.surface,
+                                      color: active ? theme.accentDeep : theme.muted,
+                                    }}
+                                  >
+                                    {option === "pickup" ? "Pickup" : "Delivery"}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   <span style={s.label}>
                     HOW WILL THE ORDER LEAVE THE STORE?
                   </span>
@@ -4335,9 +4469,21 @@ const buildSaleDocument = (input: {
     cart.lines.find((line) => line.rentalTenure)?.rentalTenure ?? null;
   const period = cart.lines.find((line) => line.rentalStart && line.rentalEnd);
 
+  // Only a mixed order says how each item goes out; otherwise it is the same
+  // for all of them and the header already says so.
+  const mixedFulfilment =
+    new Set(cart.lines.map((line) => line.fulfilment ?? input.fulfilment)).size > 1;
+
   const items = cart.lines.flatMap((line) => {
     const details: string[] = [];
     if (line.sku) details.push(`SKU ${line.sku}`);
+    if (mixedFulfilment) {
+      details.push(
+        (line.fulfilment ?? input.fulfilment) === "pickup"
+          ? "Customer pickup"
+          : "Delivery",
+      );
+    }
     if (rental && line.rentalTenure) {
       details.push(
         `${line.rentalTenure} month${line.rentalTenure === 1 ? "" : "s"}`,
@@ -4366,6 +4512,8 @@ const buildSaleDocument = (input: {
     if (note) details.push(`Note: ${note}`);
 
     const mainItem = {
+      // Which slip it goes on: its own choice, else the order's.
+      fulfilment: (line.fulfilment ?? input.fulfilment) as "pickup" | "delivery",
       quantity: line.quantity,
       description: line.name,
       reference: line.serial ?? line.sku ?? null,

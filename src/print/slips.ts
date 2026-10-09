@@ -152,7 +152,7 @@ export const buildPickupSlipHTML = (document: PosSaleDocument): string => {
       lines: collectedAt ? [`Collected in store at ${collectedAt}.`] : [],
     },
   })}
-	${modernSlipItems(document.items, "Awaiting Pickup", document.scheduledFor || "To be scheduled")}
+	${modernSlipItems(document.items.filter((item) => item.fulfilment !== "delivery"), "Awaiting Pickup", document.scheduledFor || "To be scheduled")}
 	<div class="modern-balance">BALANCE OWING: ${printMoney(document.balance, business)}</div>
 	${
     document.pickupCode
@@ -195,7 +195,7 @@ export const buildDeliverySlipHTML = (document: PosSaleDocument): string => {
       lines: document.shipTo.lines,
     },
   })}
-	${modernSlipItems(document.items, "Scheduled", document.scheduledFor || "To be scheduled")}
+	${modernSlipItems(document.items.filter((item) => item.fulfilment !== "pickup"), "Scheduled", document.scheduledFor || "To be scheduled")}
 	<div class="modern-balance">BALANCE OWING: ${printMoney(document.balance, business)}</div>
 	<section class="modern-survey">
 		<div class="modern-survey-panel">
