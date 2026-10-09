@@ -386,6 +386,11 @@ export const SharedPos = ({
   /** Sales parked at this till, loaded when the operator opens the list. */
   const [heldCarts, setHeldCarts] = useState<HeldCart[] | null>(null);
   const [parkOpen, setParkOpen] = useState(false);
+  /** The "park this sale" name box, in place of the browser's own prompt. */
+  const [parkNameOpen, setParkNameOpen] = useState(false);
+  const [parkName, setParkName] = useState("");
+  /** The customer picker's list is showing (the box is focused). */
+  const [customerOpen, setCustomerOpen] = useState(false);
 
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [checkoutStep, setCheckoutStep] = useState<CheckoutStep>("customer");
@@ -656,20 +661,26 @@ export const SharedPos = ({
   }, [error]);
 
   useEffect(() => {
-    if (customerSearch.trim().length < 2) {
+    const term = customerSearch.trim();
+    // An empty box lists the first few customers; one letter is too little to
+    // search on; a chosen customer needs no list.
+    if (!customerOpen || customer || term.length === 1) {
       setCustomers([]);
       return;
     }
-    const timer = window.setTimeout(() => {
-      client
-        .request<Customer[]>(
-          `/customers?search=${encodeURIComponent(customerSearch)}`,
-        )
-        .then(setCustomers)
-        .catch((reason) => setError(reason.message));
-    }, 300);
+    const timer = window.setTimeout(
+      () => {
+        client
+          .request<Customer[]>(
+            `/customers?search=${encodeURIComponent(term)}`,
+          )
+          .then(setCustomers)
+          .catch((reason) => setError(reason.message));
+      },
+      term ? 300 : 0,
+    );
     return () => window.clearTimeout(timer);
-  }, [client, customerSearch]);
+  }, [client, customerSearch, customerOpen, customer]);
 
   /* ------------------------------------------------------------- actions */
   const openProduct = async (product: CatalogProduct) => {
@@ -813,13 +824,71 @@ export const SharedPos = ({
     }
   };
 
+  /** How an item goes out: its own choice, else the order's. */
+  const lineMethod = (line: { fulfilment?: "pickup" | "delivery" | null }) =>
+    line.fulfilment ?? fulfilment;
+
+  /**
+   * Chooses how one item goes out. The order's own method follows: it is
+   * delivery as soon as any item is delivered (the address and the delivery
+   * charge hang off it), and pickup only when every item is.
+   */
+  const chooseLineMethod = async (
+    lineId: string,
+    method: "pickup" | "delivery",
+  ) => {
+    if (!cart) return;
+    const lines = cart.lines.map((line) => ({
+      ...line,
+      fulfilment: line.id === lineId ? method : line.fulfilment,
+    }));
+    const order = lines.some((line) => lineMethod(line) === "delivery")
+      ? "delivery"
+      : "pickup";
+    const previous = fulfilment;
+    try {
+      setBusy(true);
+      setError(null);
+      let next = await client.request<PosCart>(
+        `/carts/${cart.id}/lines/${lineId}`,
+        { method: "PATCH", body: JSON.stringify({ fulfilment: method }) },
+      );
+      if (order !== previous) {
+        setFulfilment(order);
+        next = await client.request<PosCart>(`/carts/${cart.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            fulfilment: { ...(next.fulfilment ?? {}), method: order },
+          }),
+        });
+      }
+      setCart(next);
+    } catch (reason) {
+      setFulfilment(previous);
+      setError(
+        reason instanceof Error ? reason.message : "Unable to update the item",
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const changeFulfilment = async (method: "pickup" | "delivery") => {
-    if (!cart || method === fulfilment) return;
+    if (!cart) return;
+    const overridden = cart.lines.filter((line) => line.fulfilment);
+    // Choosing for the whole order again also clears any per-item choices.
+    if (method === fulfilment && overridden.length === 0) return;
     const previous = fulfilment;
     setFulfilment(method);
     try {
       setBusy(true);
       setError(null);
+      for (const line of overridden) {
+        await client.request<PosCart>(`/carts/${cart.id}/lines/${line.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ fulfilment: null }),
+        });
+      }
       setCart(
         await client.request<PosCart>(`/carts/${cart.id}`, {
           method: "PATCH",
@@ -865,6 +934,7 @@ export const SharedPos = ({
     if (!cart) return;
     setCustomer(value);
     setCustomers([]);
+    setCustomerOpen(false);
     setCustomerSearch(value.name);
     setDeliveryAddress(blankDeliveryAddress(tenant));
     try {
@@ -1742,7 +1812,11 @@ export const SharedPos = ({
                 padding: "0 12px",
               }}
             >
-              <Icon path="M20 20l-4.2-4.2" size={18} stroke={theme.muted} />
+              <Icon
+                path="M11 18a7 7 0 100-14 7 7 0 000 14z|M20 20l-4.2-4.2"
+                size={18}
+                stroke={theme.muted}
+              />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
@@ -2219,12 +2293,8 @@ export const SharedPos = ({
                     type="button"
                     disabled={busy || cart.lines.length === 0}
                     onClick={() => {
-                      const name = window.prompt(
-                        "Park this sale as — a name to find it by",
-                        customer?.name ?? "",
-                      );
-                      // Cancel means cancel; an empty name is still a park.
-                      if (name !== null) void parkCart(name.trim() || null);
+                      setParkName(customer?.name ?? "");
+                      setParkNameOpen(true);
                     }}
                     style={{ ...s.ghostButton, flex: 1, height: 42 }}
                   >
@@ -2592,6 +2662,52 @@ export const SharedPos = ({
         </div>
       )}
 
+      {parkNameOpen && (
+        <div
+          style={{ ...s.modalBackdrop, zIndex: 1250 }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Park this sale"
+        >
+          <form
+            style={{ ...s.modal, width: "min(440px, 100%)", borderRadius: 18, padding: 22 }}
+            onSubmit={(event) => {
+              event.preventDefault();
+              setParkNameOpen(false);
+              // An empty name is still a park.
+              void parkCart(parkName.trim() || null);
+            }}
+          >
+            <h2 style={{ margin: "0 0 4px", fontSize: 19, fontWeight: 800, color: theme.ink }}>
+              Park this sale
+            </h2>
+            <p style={{ margin: "0 0 14px", fontSize: 12.5, color: theme.muted }}>
+              Give it a name to find it by later. The units stay reserved.
+            </p>
+            <input
+              autoFocus
+              style={s.field}
+              value={parkName}
+              maxLength={80}
+              placeholder="e.g. customer name"
+              onChange={(event) => setParkName(event.target.value)}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
+              <button
+                type="button"
+                style={{ ...s.ghostButton, height: 42 }}
+                onClick={() => setParkNameOpen(false)}
+              >
+                Cancel
+              </button>
+              <button type="submit" style={{ ...s.primaryButton, height: 42 }}>
+                Park sale
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* ------------------------------------------------ checkout */}
       {parkOpen && (
         <div
@@ -2827,13 +2943,17 @@ export const SharedPos = ({
                 <div style={{ display: "grid", gap: 12 }}>
                   <div style={{ display: "grid", gap: 7 }}>
                     <span style={s.label}>CUSTOMER</span>
+                    <div style={{ position: "relative" }}>
                     <div style={{ display: "flex", gap: 8 }}>
                       <input
                         style={s.field}
                         value={customerSearch}
                         placeholder="Search by name, email or phone"
+                        onFocus={() => setCustomerOpen(true)}
+                        onBlur={() => setCustomerOpen(false)}
                         onChange={(event) => {
                           setCustomer(null);
+                          setCustomerOpen(true);
                           setCustomerSearch(event.target.value);
                         }}
                       />
@@ -2851,6 +2971,59 @@ export const SharedPos = ({
                       >
                         +
                       </button>
+                    </div>
+                    {/*
+                      * A dropdown of fixed height under the box: the first
+                      * customers when it is focused empty, matches as the
+                      * cashier types. It scrolls inside itself rather than
+                      * growing the dialog.
+                      */}
+                    {customers.length > 0 && !customer && customerOpen && (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: 46,
+                          left: 0,
+                          right: 56,
+                          zIndex: 5,
+                          height: 220,
+                          overflowY: "auto",
+                          background: theme.surface,
+                          border: `1px solid ${theme.border}`,
+                          borderRadius: 10,
+                          boxShadow: "0 10px 24px rgba(16,22,20,.14)",
+                        }}
+                      >
+                        {customers.slice(0, 15).map((value) => (
+                          <button
+                            type="button"
+                            key={value.id}
+                            // Keeps the box focused, so choosing is not
+                            // pre-empted by the blur that closes the list.
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => chooseCustomer(value)}
+                            style={{
+                              display: "block",
+                              width: "100%",
+                              border: 0,
+                              textAlign: "left",
+                              cursor: "pointer",
+                              borderBottom: `1px solid ${theme.borderSoft}`,
+                              background: theme.surface,
+                              padding: "9px 11px",
+                              fontFamily: uiFont,
+                            }}
+                          >
+                            <span style={{ fontSize: 13, fontWeight: 700, color: theme.ink }}>
+                              {value.name}
+                            </span>
+                            <div style={{ fontSize: 11.5, color: theme.muted }}>
+                              {value.email ?? value.phone}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     </div>
                     {customer && (
                       <div
@@ -2901,49 +3074,6 @@ export const SharedPos = ({
                         </div>
                       </div>
                     )}
-                    {customers.length > 0 && !customer && (
-                      <div
-                        style={{
-                          border: `1px solid ${theme.border}`,
-                          borderRadius: 10,
-                          overflow: "hidden",
-                          maxHeight: 180,
-                          overflowY: "auto",
-                        }}
-                      >
-                        {customers.map((value) => (
-                          <button
-                            type="button"
-                            key={value.id}
-                            onClick={() => chooseCustomer(value)}
-                            style={{
-                              display: "block",
-                              width: "100%",
-                              border: 0,
-                              textAlign: "left",
-                              cursor: "pointer",
-                              borderBottom: `1px solid ${theme.borderSoft}`,
-                              background: theme.surface,
-                              padding: "9px 11px",
-                              fontFamily: uiFont,
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: 13,
-                                fontWeight: 700,
-                                color: theme.ink,
-                              }}
-                            >
-                              {value.name}
-                            </span>
-                            <div style={{ fontSize: 11.5, color: theme.muted }}>
-                              {value.email ?? value.phone}
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
                   <div
                     style={{
@@ -2976,6 +3106,82 @@ export const SharedPos = ({
 
               {checkoutStep === "shipping" && (
                 <div style={{ display: "grid", gap: 12 }}>
+                  {/*
+                    * Per item, because one order may mix them: the customer
+                    * takes the microwave today and has the fridge delivered
+                    * later. The choice below is the order's default and where
+                    * it is delivered TO.
+                    */}
+                  {cart && cart.lines.length > 1 && (
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 8,
+                        padding: 14,
+                        borderRadius: 13,
+                        border: `1.5px solid ${theme.border}`,
+                      }}
+                    >
+                      <span style={{ fontSize: 13, fontWeight: 700, color: theme.ink }}>
+                        How is each item going out?
+                      </span>
+                      {cart.lines.map((line) => {
+                        const method = lineMethod(line);
+                        return (
+                          <div
+                            key={line.id}
+                            style={{ display: "flex", alignItems: "center", gap: 10 }}
+                          >
+                            <span
+                              style={{
+                                flex: 1,
+                                minWidth: 0,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                fontSize: 13,
+                                color: theme.inkSoft,
+                              }}
+                            >
+                              {line.name}
+                              {line.serial && (
+                                <span style={{ marginLeft: 8, color: theme.mutedLight }}>
+                                  {line.serial}
+                                </span>
+                              )}
+                            </span>
+                            <div style={{ display: "flex", gap: 6, flex: "none" }}>
+                              {(["delivery", "pickup"] as const).map((option) => {
+                                const active = method === option;
+                                return (
+                                  <button
+                                    key={option}
+                                    type="button"
+                                    disabled={busy}
+                                    aria-pressed={active}
+                                    onClick={() => void chooseLineMethod(line.id, option)}
+                                    style={{
+                                      padding: "4px 12px",
+                                      borderRadius: 10,
+                                      cursor: busy ? "not-allowed" : "pointer",
+                                      fontFamily: uiFont,
+                                      fontSize: 12,
+                                      fontWeight: 700,
+                                      border: `1.5px solid ${active ? theme.accent : theme.border}`,
+                                      background: active ? theme.accentSoft : theme.surface,
+                                      color: active ? theme.accentDeep : theme.muted,
+                                    }}
+                                  >
+                                    {option === "pickup" ? "Pickup" : "Delivery"}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   <span style={s.label}>
                     HOW WILL THE ORDER LEAVE THE STORE?
                   </span>
@@ -4263,9 +4469,21 @@ const buildSaleDocument = (input: {
     cart.lines.find((line) => line.rentalTenure)?.rentalTenure ?? null;
   const period = cart.lines.find((line) => line.rentalStart && line.rentalEnd);
 
+  // Only a mixed order says how each item goes out; otherwise it is the same
+  // for all of them and the header already says so.
+  const mixedFulfilment =
+    new Set(cart.lines.map((line) => line.fulfilment ?? input.fulfilment)).size > 1;
+
   const items = cart.lines.flatMap((line) => {
     const details: string[] = [];
     if (line.sku) details.push(`SKU ${line.sku}`);
+    if (mixedFulfilment) {
+      details.push(
+        (line.fulfilment ?? input.fulfilment) === "pickup"
+          ? "Customer pickup"
+          : "Delivery",
+      );
+    }
     if (rental && line.rentalTenure) {
       details.push(
         `${line.rentalTenure} month${line.rentalTenure === 1 ? "" : "s"}`,
@@ -4294,6 +4512,8 @@ const buildSaleDocument = (input: {
     if (note) details.push(`Note: ${note}`);
 
     const mainItem = {
+      // Which slip it goes on: its own choice, else the order's.
+      fulfilment: (line.fulfilment ?? input.fulfilment) as "pickup" | "delivery",
       quantity: line.quantity,
       description: line.name,
       reference: line.serial ?? line.sku ?? null,

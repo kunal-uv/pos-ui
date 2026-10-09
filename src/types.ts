@@ -180,6 +180,8 @@ export interface PosCart {
     warranty?: (PosWarrantyPlan & { total: number }) | null;
     /** Plans the product offers that apply at this line's rent. */
     availableWarranties?: PosWarrantyPlan[];
+    /** How this one item goes out; null means the order's own method. */
+    fulfilment?: "pickup" | "delivery" | null;
     /** `{ product, unit }` as the service snapshotted it when the line was priced. */
     metadata?: {
       product?: Record<string, unknown>;
