@@ -17,7 +17,6 @@ import {
   modernInvoiceItems,
   modernReceiptSignature,
   modernSlipItems,
-  modernTerms,
   modernTotals,
   printMoney,
   printText,
@@ -124,7 +123,6 @@ export const buildInvoiceHTML = (document: PosSaleDocument): string => {
 	</section>
 	${document.notes ? `<div class="modern-agreement"><strong>NOTE:</strong> ${printText(document.notes)}</div>` : ""}
 	<section class="modern-invoice-terms">
-		${modernTerms(business)}
 		<div class="modern-invoice-signature">
 			<div>I agree with rental &amp; delivery terms &amp; conditions.</div>
 			<div>CUSTOMER SIGNATURE${document.signature ? `<img src="${printText(document.signature)}" alt="" onerror="this.style.display='none';" />` : ""}</div>
