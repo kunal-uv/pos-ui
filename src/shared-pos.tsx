@@ -398,6 +398,7 @@ export const SharedPos = ({
   const [signatureDraft, setSignatureDraft] = useState<string | null>(null);
   const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const customerInputRef = useRef<HTMLInputElement>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -668,18 +669,30 @@ export const SharedPos = ({
       setCustomers([]);
       return;
     }
+    // A slower, older reply must not overwrite the answer to what is typed now.
+    let current = true;
     const timer = window.setTimeout(
       () => {
         client
           .request<Customer[]>(
             `/customers?search=${encodeURIComponent(term)}`,
           )
-          .then(setCustomers)
-          .catch((reason) => setError(reason.message));
+          .then((found) => {
+            if (current) setCustomers(found);
+          })
+          .catch((reason) => {
+            if (!current) return;
+            // The starting list is a convenience: a service that cannot list
+            // without a search yet should not interrupt the cashier with it.
+            if (term) setError(reason.message);
+          });
       },
       term ? 300 : 0,
     );
-    return () => window.clearTimeout(timer);
+    return () => {
+      current = false;
+      window.clearTimeout(timer);
+    };
   }, [client, customerSearch, customerOpen, customer]);
 
   /* ------------------------------------------------------------- actions */
@@ -915,8 +928,14 @@ export const SharedPos = ({
    * search box, inviting the operator to pick somebody else for a sale the
    * credit cannot legally pay for.
    */
+  // The cashier has changed the box themselves: do not put the cart's customer
+  // back behind them while they clear it to pick somebody else.
+  const customerEdited = useRef(false);
   useEffect(() => {
-    if (!cart?.customerId || customer) return;
+    customerEdited.current = false;
+  }, [cart?.id]);
+  useEffect(() => {
+    if (!cart?.customerId || customer || customerEdited.current) return;
     const snapshot = cart.customerSnapshot as
       | { name?: string; email?: string; phone?: string }
       | null
@@ -932,6 +951,7 @@ export const SharedPos = ({
 
   const chooseCustomer = async (value: Customer) => {
     if (!cart) return;
+    customerEdited.current = false;
     setCustomer(value);
     setCustomers([]);
     setCustomerOpen(false);
@@ -2949,9 +2969,14 @@ export const SharedPos = ({
                         style={s.field}
                         value={customerSearch}
                         placeholder="Search by name, email or phone"
+                        // The browser's own saved-address list would sit on top of ours.
+                        autoComplete="off"
+                        name="pos-customer-search"
+                        ref={customerInputRef}
                         onFocus={() => setCustomerOpen(true)}
                         onBlur={() => setCustomerOpen(false)}
                         onChange={(event) => {
+                          customerEdited.current = true;
                           setCustomer(null);
                           setCustomerOpen(true);
                           setCustomerSearch(event.target.value);
@@ -2978,14 +3003,18 @@ export const SharedPos = ({
                       * cashier types. It scrolls inside itself rather than
                       * growing the dialog.
                       */}
-                    {customers.length > 0 && !customer && customerOpen && (
+                    {customers.length > 0 && !customer && customerOpen && (() => {
+                      // Positioned against the screen, not the dialog: the dialog
+                      // scrolls and clips, and the list should be free to run past it.
+                      const box = customerInputRef.current?.getBoundingClientRect();
+                      return (
                       <div
                         style={{
-                          position: "absolute",
-                          top: 46,
-                          left: 0,
-                          right: 56,
-                          zIndex: 5,
+                          position: "fixed",
+                          top: (box?.bottom ?? 0) + 4,
+                          left: box?.left ?? 0,
+                          width: box?.width ?? 320,
+                          zIndex: 1400,
                           height: 220,
                           overflowY: "auto",
                           background: theme.surface,
@@ -3023,7 +3052,8 @@ export const SharedPos = ({
                           </button>
                         ))}
                       </div>
-                    )}
+                      );
+                    })()}
                     </div>
                     {customer && (
                       <div
