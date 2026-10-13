@@ -33,11 +33,13 @@ import type {
   HeldCart,
   InventoryUnit,
   PosAddress,
+  PosAgreement,
   PosCart,
   PosSession,
   SharedPosProps,
 } from "./types";
 import { CommissionHint } from "./commission-hint";
+import { sanitizeHtml } from "./sanitize-html";
 
 /**
  * `crypto.randomUUID` only exists on a secure origin. A till reached over plain
@@ -268,6 +270,7 @@ type CheckoutStep =
   | "shipping"
   | "details"
   | "signature"
+  | "agreement"
   | "payment";
 
 const CHECKOUT_STEPS: Array<{ key: CheckoutStep; label: string }> = [
@@ -275,6 +278,7 @@ const CHECKOUT_STEPS: Array<{ key: CheckoutStep; label: string }> = [
   { key: "shipping", label: "Shipping" },
   { key: "details", label: "Details" },
   { key: "signature", label: "Signature" },
+  { key: "agreement", label: "Agreement" },
   { key: "payment", label: "Payment" },
 ];
 
@@ -433,6 +437,12 @@ export const SharedPos = ({
   }>({ stepsOutside: null, stepsInside: null });
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [signatureData, setSignatureData] = useState<string | null>(null);
+  /** Rent agreement step (capability-gated). Never kept past a change to the sale. */
+  const [agreementAccepted, setAgreementAccepted] = useState(false);
+  const [agreement, setAgreement] = useState<PosAgreement | null>(null);
+  const [agreementLoading, setAgreementLoading] = useState(false);
+  const [agreementError, setAgreementError] = useState<string | null>(null);
+  const [agreementNonce, setAgreementNonce] = useState(0);
   const [marketingConsent, setMarketingConsent] = useState(true);
   // Built from the cart at the moment it was committed. Held apart from the
   // cart state because the cart is gone once the transaction completes, and a
@@ -463,6 +473,57 @@ export const SharedPos = ({
   const serialized = session?.capabilities.serializedInventory ?? true;
   const rental = cart?.kind === "RENTAL";
   const needsSignature = session?.capabilities.signature ?? false;
+  const agreementRequired = session?.capabilities.agreement === true;
+  const checkoutSteps = useMemo(
+    () =>
+      agreementRequired
+        ? CHECKOUT_STEPS
+        : CHECKOUT_STEPS.filter(({ key }) => key !== "agreement"),
+    [agreementRequired],
+  );
+  /** Anything the agreement was rendered from; a change invalidates the tick. */
+  const agreementKey = `${cart?.id ?? ""}|${customer?.id ?? ""}|${rentalStart}|${rentalEnd}|${(cart?.lines ?? [])
+    .map((l) => `${l.id}:${l.quantity}:${l.rentalStart ?? ""}:${l.rentalEnd ?? ""}`)
+    .join(",")}`;
+  useEffect(() => {
+    setAgreementAccepted(false);
+    setAgreement(null);
+    setAgreementError(null);
+  }, [agreementKey, signatureData]);
+  useEffect(() => {
+    if (!agreementRequired || !checkoutOpen || checkoutStep !== "agreement") {
+      return;
+    }
+    if (!cart?.id) return;
+    let cancelled = false;
+    setAgreementLoading(true);
+    setAgreementError(null);
+    setAgreementAccepted(false);
+    setAgreement(null);
+    client
+      .request<PosAgreement>(`/carts/${cart.id}/agreement`)
+      .then((data) => {
+        if (!cancelled) setAgreement(data);
+      })
+      .catch((reason) => {
+        if (!cancelled) {
+          setAgreementError(
+            reason instanceof Error
+              ? reason.message
+              : "Unable to load the rental agreement",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setAgreementLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agreementRequired, checkoutOpen, checkoutStep, cart?.id, agreementNonce]);
+  const agreementReady =
+    !agreementLoading && !agreementError && agreement?.available === true;
   const frameHeight =
     viewportOffset > 0
       ? `calc(100dvh - ${Math.max(0, viewportOffset)}px)`
@@ -1036,8 +1097,9 @@ export const SharedPos = ({
     !cart?.lines.length ||
     !customer ||
     !deliveryComplete ||
-    (needsSignature && !signatureData);
-  const checkoutStepIndex = CHECKOUT_STEPS.findIndex(
+    (needsSignature && !signatureData) ||
+    (agreementRequired && !(agreementAccepted && agreementReady));
+  const checkoutStepIndex = checkoutSteps.findIndex(
     ({ key }) => key === checkoutStep,
   );
   const paymentOptions =
@@ -1145,6 +1207,9 @@ export const SharedPos = ({
     setTenderedInput("");
     setSignatureData(null);
     setSignatureDraft(null);
+    setAgreementAccepted(false);
+    setAgreement(null);
+    setAgreementError(null);
     setMarketingConsent(true);
     setDeliverySurvey({ stepsOutside: null, stepsInside: null });
     setOrderDetails({
@@ -1209,6 +1274,9 @@ export const SharedPos = ({
       customChargeLabel: customChargeLabel.trim() || null,
       customChargeTaxable,
       signatureData,
+      ...(agreementRequired && agreementAccepted && agreementReady
+        ? { agreementAccepted: true }
+        : {}),
       marketingConsent,
       shippingAddress: address,
       billingAddress: address,
@@ -1263,6 +1331,10 @@ export const SharedPos = ({
 
   const completeCheckout = async () => {
     if (!cart || !customer || !session) return;
+    if (agreementRequired && !(agreementAccepted && agreementReady)) {
+      setError("The rental agreement must be accepted before checkout.");
+      return;
+    }
     try {
       setBusy(true);
       setError(null);
@@ -2899,7 +2971,7 @@ export const SharedPos = ({
                   listStyle: "none",
                 }}
               >
-                {CHECKOUT_STEPS.map((entry, index) => {
+                {checkoutSteps.map((entry, index) => {
                   const done = index < checkoutStepIndex;
                   const current = index === checkoutStepIndex;
                   return (
@@ -2944,7 +3016,7 @@ export const SharedPos = ({
                           {entry.label}
                         </span>
                       </li>
-                      {index < CHECKOUT_STEPS.length - 1 && (
+                      {index < checkoutSteps.length - 1 && (
                         <span
                           style={{
                             height: 1,
@@ -3862,11 +3934,199 @@ export const SharedPos = ({
                       <button
                         type="button"
                         style={s.primaryButton}
-                        onClick={() => setCheckoutStep("payment")}
+                        onClick={() =>
+                          setCheckoutStep(agreementRequired ? "agreement" : "payment")
+                        }
                       >
                         Continue
                       </button>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {checkoutStep === "agreement" && agreementRequired && (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {agreementLoading && (
+                    <div
+                      role="status"
+                      style={{
+                        borderRadius: 15,
+                        border: `1px solid ${theme.borderSoft}`,
+                        background: theme.surfaceAlt,
+                        padding: "20px 16px",
+                        textAlign: "center",
+                        fontSize: 13.5,
+                        color: theme.muted,
+                      }}
+                    >
+                      Loading rental agreement…
+                    </div>
+                  )}
+                  {!agreementLoading && agreementError && (
+                    <div
+                      role="alert"
+                      style={{
+                        borderRadius: 15,
+                        border: `1px solid ${theme.border}`,
+                        background: theme.surfaceAlt,
+                        padding: "16px",
+                        display: "grid",
+                        gap: 10,
+                        fontSize: 13.5,
+                        color: theme.ink,
+                      }}
+                    >
+                      <span>{agreementError}</span>
+                      <button
+                        type="button"
+                        style={{ ...s.ghostButton, height: 40, justifySelf: "start" }}
+                        onClick={() => setAgreementNonce((n) => n + 1)}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  )}
+                  {!agreementLoading && !agreementError && agreement && !agreement.available && (
+                    <div
+                      role="alert"
+                      style={{
+                        borderRadius: 15,
+                        border: "1px solid #dc2626",
+                        background: "#fef2f2",
+                        padding: "16px",
+                        display: "grid",
+                        gap: 8,
+                        fontSize: 13.5,
+                        color: "#7f1d1d",
+                      }}
+                    >
+                      <strong style={{ fontSize: 15 }}>
+                        No rent agreement template is set up
+                      </strong>
+                      <span>{agreement.message}</span>
+                      <span>
+                        Checkout cannot continue until an admin creates a
+                        default template in Settings &gt; Rent Agreement.
+                      </span>
+                      <button
+                        type="button"
+                        style={{ ...s.ghostButton, height: 40, justifySelf: "start" }}
+                        onClick={() => setAgreementNonce((n) => n + 1)}
+                      >
+                        Check again
+                      </button>
+                    </div>
+                  )}
+                  {agreementReady && agreement?.available && (
+                    <>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: 12,
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: theme.ink }}>
+                            {agreement.templateName}
+                          </div>
+                          <div style={{ fontSize: 12.5, color: theme.muted }}>
+                            Customer: {customer?.name}
+                          </div>
+                        </div>
+                        {signatureData && (
+                          <img
+                            src={signatureData}
+                            alt="Customer signature"
+                            style={{
+                              height: 48,
+                              maxWidth: 140,
+                              objectFit: "contain",
+                              border: `1px solid ${theme.borderSoft}`,
+                              borderRadius: 8,
+                              background: "#fff",
+                              flex: "none",
+                            }}
+                          />
+                        )}
+                      </div>
+                      <div
+                        tabIndex={0}
+                        role="region"
+                        aria-label="Rental agreement terms"
+                        style={{
+                          maxHeight: 300,
+                          overflowY: "auto",
+                          border: `1px solid ${theme.border}`,
+                          borderRadius: 12,
+                          background: "#fff",
+                          padding: "12px 14px",
+                          fontSize: 13,
+                          lineHeight: 1.5,
+                          color: theme.ink,
+                        }}
+                        dangerouslySetInnerHTML={{
+                          __html: sanitizeHtml(agreement.html),
+                        }}
+                      />
+                    </>
+                  )}
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      fontSize: 13.5,
+                      fontWeight: 600,
+                      color: theme.ink,
+                      opacity: agreementReady ? 1 : 0.55,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={agreementAccepted}
+                      disabled={!agreementReady}
+                      required
+                      aria-required="true"
+                      onChange={(event) =>
+                        setAgreementAccepted(
+                          agreementReady && event.target.checked,
+                        )
+                      }
+                      style={{ width: 18, height: 18, marginTop: 1 }}
+                    />
+                    <span>
+                      I confirm that I have read and signed the rental
+                      agreement.
+                    </span>
+                  </label>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 10,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      style={{ ...s.ghostButton, height: 44 }}
+                      onClick={() => setCheckoutStep("signature")}
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!agreementReady || !agreementAccepted}
+                      style={{
+                        ...s.primaryButton,
+                        opacity: agreementReady && agreementAccepted ? 1 : 0.55,
+                      }}
+                      onClick={() => setCheckoutStep("payment")}
+                    >
+                      Continue to Payment
+                    </button>
                   </div>
                 </div>
               )}
@@ -4029,7 +4289,9 @@ export const SharedPos = ({
                     <button
                       type="button"
                       style={{ ...s.ghostButton, width: 120, height: 52 }}
-                      onClick={() => setCheckoutStep("signature")}
+                      onClick={() =>
+                        setCheckoutStep(agreementRequired ? "agreement" : "signature")
+                      }
                     >
                       Back
                     </button>
@@ -4138,7 +4400,7 @@ export const SharedPos = ({
                 onClick={() => {
                   setSignatureData(signatureDraft);
                   setSignatureOpen(false);
-                  setCheckoutStep("payment");
+                  setCheckoutStep(agreementRequired ? "agreement" : "payment");
                 }}
                 style={{
                   ...s.primaryButton,
