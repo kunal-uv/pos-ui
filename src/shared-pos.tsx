@@ -302,6 +302,29 @@ const AGREEMENT_DOCUMENT_CSS = `
 .pos-agreement-doc td > p, .pos-agreement-doc th > p { margin: 0; }
 `;
 
+/**
+ * Hover / focus / press states from the AO till (Tailwind `hover:`, `active:`,
+ * `focus:`, `transition`), which inline styles cannot express. Class names are
+ * `pos-` prefixed and the colours come from the theme, so the accent stays the
+ * platform's. `!important` because the base colours are inline.
+ */
+const posInteractionCss = (theme: PosTheme): string => `
+.pos-tr { transition: background-color .15s cubic-bezier(.4,0,.2,1), border-color .15s cubic-bezier(.4,0,.2,1), color .15s cubic-bezier(.4,0,.2,1), box-shadow .15s cubic-bezier(.4,0,.2,1), transform .15s cubic-bezier(.4,0,.2,1), opacity .15s cubic-bezier(.4,0,.2,1); }
+.pos-hov-alt:hover:not(:disabled) { background: ${theme.surfaceMuted} !important; }
+.pos-hov-bg:hover:not(:disabled) { background: ${theme.bg} !important; }
+.pos-hov-accent:hover:not(:disabled) { background: ${theme.accentHover} !important; }
+.pos-hov-tint:hover:not(:disabled) { background: ${theme.accentTint} !important; }
+.pos-hov-clear:hover { background: #E0E7E3 !important; }
+.pos-hov-chip:hover:not(:disabled) { border-color: ${theme.accent} !important; background: ${theme.accentTint} !important; }
+.pos-hov-soft:hover:not(:disabled) { border-color: ${theme.accent} !important; background: ${theme.accentSoft} !important; }
+.pos-press:active:not(:disabled) { transform: scale(.97); }
+.pos-focus:focus { border-color: ${theme.accent} !important; }
+.pos-focus-within:focus-within { border-color: ${theme.accent} !important; }
+.pos-btn-disabled:disabled { opacity: .5; cursor: not-allowed; }
+.pos-root button, .pos-root input, .pos-root select, .pos-root textarea { font-family: inherit; }
+.pos-root input::placeholder, .pos-root textarea::placeholder { color: ${theme.mutedLight}; }
+`;
+
 const CHECKOUT_STEPS: Array<{ key: CheckoutStep; label: string }> = [
   { key: "customer", label: "Customer" },
   { key: "shipping", label: "Shipping" },
@@ -1478,18 +1501,21 @@ export const SharedPos = ({
       field: {
         // ! `border-box`, or the padding and border are added to the 100%
         // ! width and every input overflows the grid cell holding it.
+        // AO `posInputClass`: 46px, 12px radius, 1.5px border, 15/600.
         boxSizing: "border-box",
         width: "100%",
-        height: 42,
-        border: `1px solid ${theme.border}`,
-        borderRadius: 10,
-        padding: "0 12px",
-        fontSize: 14,
-        background: theme.surface,
+        height: 46,
+        border: `1.5px solid ${theme.border}`,
+        borderRadius: 12,
+        padding: "0 14px",
+        fontSize: 15,
+        fontWeight: 600,
+        background: theme.surfaceAlt,
         color: theme.ink,
         fontFamily: uiFont,
         outline: "none",
       } as React.CSSProperties,
+      // AO's compact bordered button (Open item / Hold order): 38px, 13/700.
       ghostButton: {
         height: 38,
         borderRadius: 10,
@@ -1498,49 +1524,139 @@ export const SharedPos = ({
         color: theme.inkSoft,
         fontSize: 13,
         fontWeight: 700,
-        padding: "0 14px",
+        padding: "0 12px",
         cursor: "pointer",
         fontFamily: uiFont,
       } as React.CSSProperties,
-      primaryButton: {
-        height: 44,
-        minWidth: 132,
-        borderRadius: 11,
+      // AO `PosButton` (secondary / primary): 46px, 12px radius, 15/700.
+      modalSecondary: {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 7,
+        height: 46,
+        borderRadius: 12,
+        border: `1.5px solid ${theme.border}`,
+        background: theme.surfaceAlt,
+        color: theme.inkSoft,
+        fontSize: 15,
+        fontWeight: 700,
+        padding: "0 20px",
+        cursor: "pointer",
+        fontFamily: uiFont,
+      } as React.CSSProperties,
+      modalPrimary: {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 7,
+        height: 46,
+        borderRadius: 12,
         border: 0,
         background: theme.accent,
         color: "#fff",
-        fontSize: 13.5,
-        fontWeight: 800,
-        padding: "0 18px",
+        fontSize: 15,
+        fontWeight: 700,
+        padding: "0 20px",
         cursor: "pointer",
         fontFamily: uiFont,
-        boxShadow: `0 5px 14px ${theme.accentShadow}`,
+      } as React.CSSProperties,
+      // AO `posFooterButton`: the checkout footer pair, 52px, primary twice the width.
+      footerSecondary: {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        flex: 1,
+        height: 52,
+        borderRadius: 13,
+        border: `1px solid ${theme.border}`,
+        background: theme.surface,
+        color: theme.inkSoft,
+        fontSize: 14.5,
+        fontWeight: 700,
+        padding: "0 20px",
+        cursor: "pointer",
+        fontFamily: uiFont,
+      } as React.CSSProperties,
+      footerPrimary: {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 8,
+        flex: 2,
+        height: 52,
+        borderRadius: 13,
+        border: 0,
+        background: theme.accent,
+        color: "#fff",
+        fontSize: 16,
+        fontWeight: 800,
+        padding: "0 20px",
+        cursor: "pointer",
+        fontFamily: uiFont,
+      } as React.CSSProperties,
+      // Kept as the name the rest of the file reads; now the 46px modal button.
+      primaryButton: {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 7,
+        height: 46,
+        minWidth: 132,
+        borderRadius: 12,
+        border: 0,
+        background: theme.accent,
+        color: "#fff",
+        fontSize: 15,
+        fontWeight: 700,
+        padding: "0 20px",
+        cursor: "pointer",
+        fontFamily: uiFont,
       } as React.CSSProperties,
       mono: {
         fontFamily: monoFont,
         fontSize: 10.5,
         color: theme.mutedLight,
       } as React.CSSProperties,
+      // AO `PosSectionLabel` / `PosField` label: 11.5, 800, .08em, uppercase.
       label: {
         fontSize: 11.5,
         fontWeight: 800,
-        letterSpacing: ".06em",
+        letterSpacing: ".08em",
+        textTransform: "uppercase",
         color: theme.mutedLight,
       } as React.CSSProperties,
+      // AO rail heading: 10.5, 700, .1em.
+      railLabel: {
+        fontSize: 10.5,
+        fontWeight: 700,
+        letterSpacing: ".1em",
+        color: theme.mutedLight,
+      } as React.CSSProperties,
+      // AO "OUT OF STOCK" divider: 11, 800, .09em.
+      dividerLabel: {
+        fontSize: 11,
+        fontWeight: 800,
+        letterSpacing: ".09em",
+        color: theme.mutedLight,
+      } as React.CSSProperties,
+      // AO modals are Mantine modals: black .6 overlay, no blur.
       modalBackdrop: {
         position: "fixed" as const,
         inset: 0,
-        background: "rgba(10,25,20,.44)",
+        background: "rgba(0,0,0,.6)",
         display: "grid",
         placeItems: "center",
         zIndex: 1000,
         padding: 16,
       },
+      // Mantine `shadow-xl`, radius 22 (AO passes `radius={22}`).
       modal: {
         background: theme.surface,
-        borderRadius: 18,
-        border: `1px solid ${theme.borderSoft}`,
-        boxShadow: "0 24px 60px rgba(16,22,20,.22)",
+        borderRadius: 22,
+        boxShadow:
+          "0 1px 3px rgba(0,0,0,.05), 0 36px 28px -7px rgba(0,0,0,.05), 0 17px 17px -7px rgba(0,0,0,.04)",
         display: "flex",
         flexDirection: "column" as const,
         maxHeight: "calc(100vh - 32px)",
@@ -1557,6 +1673,7 @@ export const SharedPos = ({
   if (!session || !cart) {
     return (
       <div
+        className="pos-root"
         style={{
           height: frameHeight,
           display: "grid",
@@ -1597,7 +1714,7 @@ export const SharedPos = ({
   /* ---------------------------------------------------------------- till */
   return (
     <div
-      className="shared-pos-root"
+      className="shared-pos-root pos-root"
       style={{
         height: frameHeight,
         maxHeight: frameHeight,
@@ -1614,9 +1731,7 @@ export const SharedPos = ({
 			    Without this, a host that never set `border-box` makes every
 			    padded input overflow the grid cell holding it. */}
       <style>{`.shared-pos-root, .shared-pos-root *, .shared-pos-root *::before, .shared-pos-root *::after { box-sizing: border-box; }
-.shared-pos-root ::-webkit-scrollbar { width: 9px; height: 9px; }
-.shared-pos-root ::-webkit-scrollbar-thumb { background: ${theme.border}; border-radius: 9px; }
-.shared-pos-root ::-webkit-scrollbar-track { background: transparent; }`}</style>
+${posInteractionCss(theme)}`}</style>
       {/* ------------------------------------------------------ header */}
       <header
         style={{
@@ -1634,6 +1749,7 @@ export const SharedPos = ({
           <button
             type="button"
             onClick={onExit}
+            className="pos-tr pos-hov-bg"
             style={{
               display: "flex",
               alignItems: "center",
@@ -1661,7 +1777,14 @@ export const SharedPos = ({
             >
               <Icon path="M15 18l-6-6 6-6" size={15} width={2.4} />
             </span>
-            <span style={{ fontSize: 13.5, fontWeight: 700, color: theme.ink }}>
+            <span
+              style={{
+                fontSize: 13.5,
+                fontWeight: 700,
+                letterSpacing: "-.01em",
+                color: theme.ink,
+              }}
+            >
               Dashboard
             </span>
           </button>
@@ -1669,6 +1792,7 @@ export const SharedPos = ({
 
         <span
           style={{
+            paddingLeft: 4,
             fontSize: 16,
             fontWeight: 800,
             letterSpacing: "-.02em",
@@ -1699,8 +1823,9 @@ export const SharedPos = ({
           style={{
             display: "flex",
             alignItems: "center",
-            gap: 9,
-            paddingRight: 12,
+            gap: 8,
+            marginRight: 4,
+            paddingRight: 4,
             borderRight: `1px solid ${theme.borderSoft}`,
           }}
         >
@@ -1723,6 +1848,7 @@ export const SharedPos = ({
             style={{
               display: "flex",
               flexDirection: "column",
+              paddingRight: 4,
               lineHeight: 1.15,
             }}
           >
@@ -1740,6 +1866,7 @@ export const SharedPos = ({
           onClick={() => void toggleFullscreen()}
           title={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
           aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          className="pos-tr pos-hov-bg"
           style={{
             display: "grid",
             placeItems: "center",
@@ -1767,6 +1894,7 @@ export const SharedPos = ({
           <button
             type="button"
             onClick={() => setLogoutConfirmOpen(true)}
+            className="pos-tr pos-hov-accent"
             style={{
               display: "flex",
               alignItems: "center",
@@ -1795,6 +1923,7 @@ export const SharedPos = ({
       {error && (
         <div
           role="alert"
+          className="pos-pop-in"
           style={{
             position: "fixed",
             top: 16,
@@ -1851,7 +1980,7 @@ export const SharedPos = ({
             borderRight: `1px solid ${theme.border}`,
           }}
         >
-          <span style={{ ...s.label, padding: "12px 12px 8px" }}>
+          <span style={{ ...s.railLabel, padding: "12px 12px 8px" }}>
             CATEGORIES
           </span>
           {[
@@ -1867,6 +1996,7 @@ export const SharedPos = ({
                   setCategoryId(node.id);
                   void loadCatalog(search, node.id);
                 }}
+                className={active ? "pos-tr" : "pos-tr pos-hov-alt"}
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -1894,7 +2024,7 @@ export const SharedPos = ({
                     padding: "1px 5px",
                     fontFamily: monoFont,
                     fontSize: 10,
-                    background: active ? "rgba(255,255,255,.22)" : theme.bg,
+                    background: active ? "rgba(255,255,255,.2)" : theme.bg,
                     color: active ? "#fff" : theme.mutedLight,
                   }}
                 >
@@ -1922,6 +2052,7 @@ export const SharedPos = ({
                 searchedTerm.current = search;
                 loadCatalog(search, categoryId);
               }}
+              className="pos-tr pos-focus-within"
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -1969,6 +2100,7 @@ export const SharedPos = ({
                     searchedTerm.current = "";
                     loadCatalog("", categoryId);
                   }}
+                  className="pos-tr pos-hov-clear"
                   style={{
                     display: "grid",
                     placeItems: "center",
@@ -2065,7 +2197,7 @@ export const SharedPos = ({
                         marginTop: 4,
                       }}
                     >
-                      <span style={{ ...s.label, flex: "none" }}>
+                      <span style={{ ...s.dividerLabel, flex: "none" }}>
                         OUT OF STOCK
                       </span>
                       <span
@@ -2409,7 +2541,7 @@ export const SharedPos = ({
                 * something the service refuses.
                 */}
               {canPark && (
-                <div style={{ display: "flex", gap: 8, marginBottom: 9 }}>
+                <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
                   <button
                     type="button"
                     disabled={busy || cart.lines.length === 0}
@@ -2417,7 +2549,8 @@ export const SharedPos = ({
                       setParkName(customer?.name ?? "");
                       setParkNameOpen(true);
                     }}
-                    style={{ ...s.ghostButton, flex: 1, height: 42 }}
+                    className="pos-tr pos-hov-tint pos-btn-disabled"
+                    style={{ ...s.ghostButton, flex: 1, height: 40, borderColor: theme.accentOutline, color: theme.accent }}
                   >
                     Park sale
                   </button>
@@ -2428,7 +2561,8 @@ export const SharedPos = ({
                       setParkOpen(true);
                       void loadHeldCarts();
                     }}
-                    style={{ ...s.ghostButton, flex: 1, height: 42 }}
+                    className="pos-tr pos-hov-tint pos-btn-disabled"
+                    style={{ ...s.ghostButton, flex: 1, height: 40, borderColor: theme.accentOutline, color: theme.accent }}
                   >
                     Parked sales
                   </button>
@@ -2439,6 +2573,7 @@ export const SharedPos = ({
                 type="button"
                 disabled={busy}
                 onClick={openCheckout}
+                className="pos-tr pos-hov-accent"
                 style={{
                   display: "flex",
                   alignItems: "center",
@@ -2491,31 +2626,27 @@ export const SharedPos = ({
           aria-modal="true"
           aria-label={selected.name}
         >
-          <div style={{ ...s.modal, width: "min(560px, 100%)" }}>
-            <div
-              style={{
-                padding: "20px 22px 14px",
-                borderBottom: `1px solid ${theme.borderSoft}`,
-              }}
-            >
+          <div className="pos-pop-in" style={{ ...s.modal, width: "min(560px, 100%)" }}>
+            <div style={{ padding: 16 }}>
               <h2
                 style={{
                   margin: 0,
-                  fontSize: 18,
+                  fontSize: 21,
                   fontWeight: 800,
+                  letterSpacing: "-.02em",
                   color: theme.ink,
                 }}
               >
                 {selected.name}
               </h2>
-              <div style={{ ...s.mono, marginTop: 4 }}>
+              <div style={{ ...s.mono, fontSize: 13.5, color: theme.muted, marginTop: 3 }}>
                 {selected.sku ?? "NO SKU"} · {selected.availableCount} available
               </div>
             </div>
 
             <div
               style={{
-                padding: 22,
+                padding: "0 16px 16px",
                 display: "grid",
                 gap: 14,
                 overflowY: "auto",
@@ -2552,17 +2683,18 @@ export const SharedPos = ({
                             type="button"
                             key={unit.id}
                             onClick={() => setUnitId(unit.id)}
+                            className="pos-tr"
                             style={{
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "space-between",
-                              gap: 10,
-                              padding: "9px 12px",
-                              borderRadius: 10,
+                              gap: 14,
+                              padding: "12px 16px",
+                              borderRadius: 15,
                               cursor: "pointer",
                               textAlign: "left",
                               fontFamily: uiFont,
-                              border: `1.5px solid ${active ? theme.accent : theme.border}`,
+                              border: `1.5px solid ${active ? theme.accent : theme.borderSoft}`,
                               background: active
                                 ? theme.accentSoft
                                 : theme.surface,
@@ -2583,10 +2715,10 @@ export const SharedPos = ({
                                   title={grade.label ?? undefined}
                                   style={{
                                     flex: "none",
-                                    borderRadius: 6,
-                                    padding: "2px 6px",
+                                    borderRadius: 7,
+                                    padding: "2px 7px",
                                     fontFamily: monoFont,
-                                    fontSize: 10.5,
+                                    fontSize: 11,
                                     fontWeight: 800,
                                     border: `1px solid ${chip.border}`,
                                     background: chip.background,
@@ -2607,8 +2739,9 @@ export const SharedPos = ({
                                 <span
                                   style={{
                                     fontFamily: monoFont,
-                                    fontSize: 12.5,
-                                    fontWeight: 700,
+                                    fontSize: 15,
+                                    fontWeight: 800,
+                                    letterSpacing: "-.01em",
                                     color: theme.ink,
                                   }}
                                 >
@@ -2633,10 +2766,11 @@ export const SharedPos = ({
                             </span>
                             <span
                               style={{
-                                fontSize: 14,
+                                fontSize: 20,
                                 fontWeight: 800,
+                                letterSpacing: "-.02em",
                                 flex: "none",
-                                color: active ? theme.accentDeep : theme.ink,
+                                color: theme.accent,
                               }}
                             >
                               {money(unit.price)}
@@ -2661,22 +2795,24 @@ export const SharedPos = ({
                     }}
                   >
                     <label style={{ display: "grid", gap: 5 }}>
-                      <span style={{ fontSize: 11, color: theme.muted }}>
+                      <span style={s.label}>
                         Starts
                       </span>
                       <input
                         type="date"
+                        className="pos-tr pos-focus"
                         style={s.field}
                         value={rentalStart}
                         onChange={(event) => changeStart(event.target.value)}
                       />
                     </label>
                     <label style={{ display: "grid", gap: 5 }}>
-                      <span style={{ fontSize: 11, color: theme.muted }}>
+                      <span style={s.label}>
                         Ends
                       </span>
                       <input
                         type="date"
+                        className="pos-tr pos-focus"
                         style={s.field}
                         value={rentalEnd}
                         min={rentalStart}
@@ -2684,7 +2820,7 @@ export const SharedPos = ({
                       />
                     </label>
                     <label style={{ display: "grid", gap: 5 }}>
-                      <span style={{ fontSize: 11, color: theme.muted }}>
+                      <span style={s.label}>
                         Months
                       </span>
                       <input
@@ -2692,6 +2828,7 @@ export const SharedPos = ({
                         min={1}
                         max={120}
                         inputMode="numeric"
+                        className="pos-tr pos-focus"
                         style={s.field}
                         value={tenureInput}
                         onFocus={(event) => event.currentTarget.select()}
@@ -2743,12 +2880,13 @@ export const SharedPos = ({
                 display: "flex",
                 justifyContent: "flex-end",
                 gap: 10,
-                padding: "0 22px 22px",
+                padding: "0 16px 16px",
               }}
             >
               <button
                 type="button"
-                style={{ ...s.ghostButton, width: 110 }}
+                className="pos-tr pos-hov-alt"
+                style={{ ...s.modalSecondary, width: 110 }}
                 onClick={() => {
                   setSelected(null);
                   setUnits([]);
@@ -2761,14 +2899,10 @@ export const SharedPos = ({
                 type="button"
                 disabled={busy || (serialized && !unitId)}
                 onClick={addSelected}
+                className="pos-tr pos-hov-accent pos-press"
                 style={{
-                  height: 38,
+                  ...s.modalPrimary,
                   width: 150,
-                  borderRadius: 10,
-                  border: 0,
-                  fontFamily: uiFont,
-                  fontSize: 13.5,
-                  fontWeight: 800,
                   color: "#fff",
                   cursor:
                     busy || (serialized && !unitId) ? "not-allowed" : "pointer",
@@ -2791,7 +2925,8 @@ export const SharedPos = ({
           aria-label="Park this sale"
         >
           <form
-            style={{ ...s.modal, width: "min(440px, 100%)", borderRadius: 18, padding: 22 }}
+            className="pos-pop-in"
+            style={{ ...s.modal, width: "min(440px, 100%)", padding: 16 }}
             onSubmit={(event) => {
               event.preventDefault();
               setParkNameOpen(false);
@@ -2799,14 +2934,15 @@ export const SharedPos = ({
               void parkCart(parkName.trim() || null);
             }}
           >
-            <h2 style={{ margin: "0 0 4px", fontSize: 19, fontWeight: 800, color: theme.ink }}>
+            <h2 style={{ margin: "0 0 3px", fontSize: 21, fontWeight: 800, letterSpacing: "-.02em", color: theme.ink }}>
               Park this sale
             </h2>
-            <p style={{ margin: "0 0 14px", fontSize: 12.5, color: theme.muted }}>
+            <p style={{ margin: "0 0 14px", fontSize: 13.5, color: theme.muted }}>
               Give it a name to find it by later. The units stay reserved.
             </p>
             <input
               autoFocus
+              className="pos-tr pos-focus"
               style={s.field}
               value={parkName}
               maxLength={80}
@@ -2816,12 +2952,13 @@ export const SharedPos = ({
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
               <button
                 type="button"
-                style={{ ...s.ghostButton, height: 42 }}
+                className="pos-tr pos-hov-alt"
+                style={s.modalSecondary}
                 onClick={() => setParkNameOpen(false)}
               >
                 Cancel
               </button>
-              <button type="submit" style={{ ...s.primaryButton, height: 42 }}>
+              <button type="submit" className="pos-tr pos-hov-accent pos-press" style={s.modalPrimary}>
                 Park sale
               </button>
             </div>
@@ -2839,7 +2976,7 @@ export const SharedPos = ({
             position: "fixed",
             inset: 0,
             zIndex: 60,
-            background: "rgba(16,22,20,.45)",
+            background: "rgba(0,0,0,.6)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -2847,6 +2984,7 @@ export const SharedPos = ({
           }}
         >
           <div
+            className="pos-pop-in"
             onClick={(event) => event.stopPropagation()}
             style={{
               width: "100%",
@@ -2854,20 +2992,22 @@ export const SharedPos = ({
               maxHeight: "80vh",
               overflowY: "auto",
               background: theme.surface,
-              borderRadius: 16,
-              padding: 18,
+              borderRadius: 22,
+              boxShadow: s.modal.boxShadow,
+              padding: 16,
               display: "grid",
               gap: 10,
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 15, fontWeight: 800, color: theme.ink }}>
+              <span style={{ fontSize: 21, fontWeight: 800, letterSpacing: "-.02em", color: theme.ink }}>
                 Parked sales
               </span>
               <div style={{ flex: 1 }} />
               <button
                 type="button"
                 onClick={() => setParkOpen(false)}
+                className="pos-tr"
                 style={{
                   background: "none",
                   border: 0,
@@ -2897,13 +3037,14 @@ export const SharedPos = ({
                 type="button"
                 disabled={busy}
                 onClick={() => void resumeHeldCart(held.id)}
+                className="pos-tr pos-hov-soft pos-btn-disabled"
                 style={{
                   display: "grid",
                   gap: 3,
                   textAlign: "left",
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: `1px solid ${theme.border}`,
+                  padding: "12px 16px",
+                  borderRadius: 15,
+                  border: `1.5px solid ${theme.borderSoft}`,
                   background: theme.surface,
                   cursor: busy ? "not-allowed" : "pointer",
                   fontFamily: uiFont,
@@ -2931,12 +3072,12 @@ export const SharedPos = ({
           aria-label="Checkout"
         >
           <div
-            style={{ ...s.modal, width: "min(720px, 100%)", borderRadius: 22 }}
+            className="pos-pop-in"
+            style={{ ...s.modal, width: "min(720px, 100%)" }}
           >
             <div
               style={{
-                padding: "18px 22px 14px",
-                borderBottom: `1px solid ${theme.borderSoft}`,
+                padding: 16,
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
@@ -2968,6 +3109,7 @@ export const SharedPos = ({
                   type="button"
                   aria-label="Close checkout"
                   onClick={() => setCheckoutOpen(false)}
+                  className="pos-tr pos-hov-alt"
                   style={{
                     ...s.ghostButton,
                     width: 34,
@@ -2984,7 +3126,7 @@ export const SharedPos = ({
 
             <div
               style={{
-                padding: "14px 22px 22px",
+                padding: "0 16px 16px",
                 display: "grid",
                 gap: 14,
                 overflowY: "auto",
@@ -3004,58 +3146,60 @@ export const SharedPos = ({
                   const done = index < checkoutStepIndex;
                   const current = index === checkoutStepIndex;
                   return (
-                    <React.Fragment key={entry.key}>
-                      <li
+                    <li
+                      key={entry.key}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 7,
+                        flex: 1,
+                        minWidth: 0,
+                        height: 38,
+                        borderRadius: 11,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        border: `1px solid ${
+                          current
+                            ? theme.accent
+                            : done
+                              ? "#BFE3CD"
+                              : theme.borderSoft
+                        }`,
+                        background: current
+                          ? theme.accent
+                          : done
+                            ? theme.accentSoft
+                            : theme.surface,
+                        color: current
+                          ? "#fff"
+                          : done
+                            ? theme.accentDeep
+                            : theme.mutedLight,
+                      }}
+                    >
+                      <span
                         style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                          minWidth: 0,
+                          display: "grid",
+                          placeItems: "center",
+                          width: 20,
+                          height: 20,
+                          borderRadius: 999,
+                          flex: "none",
+                          fontSize: 11,
+                          fontWeight: 800,
+                          background: current
+                            ? "rgba(255,255,255,.2)"
+                            : done
+                              ? theme.accent
+                              : theme.bg,
+                          color: current || done ? "#fff" : theme.mutedLight,
                         }}
                       >
-                        <span
-                          style={{
-                            display: "grid",
-                            placeItems: "center",
-                            width: 23,
-                            height: 23,
-                            borderRadius: 999,
-                            flex: "none",
-                            fontSize: 10.5,
-                            fontWeight: 800,
-                            border: `1.5px solid ${done || current ? theme.accent : theme.border}`,
-                            background:
-                              done || current ? theme.accent : theme.surface,
-                            color: done || current ? "#fff" : theme.mutedLight,
-                          }}
-                        >
-                          {done ? "✓" : index + 1}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 11.5,
-                            fontWeight: current ? 800 : 600,
-                            color: current
-                              ? theme.ink
-                              : done
-                                ? theme.accentDeep
-                                : theme.mutedLight,
-                          }}
-                        >
-                          {entry.label}
-                        </span>
-                      </li>
-                      {index < checkoutSteps.length - 1 && (
-                        <span
-                          style={{
-                            height: 1,
-                            flex: 1,
-                            minWidth: 10,
-                            background: done ? theme.accent : theme.borderSoft,
-                          }}
-                        />
-                      )}
-                    </React.Fragment>
+                        {done ? "✓" : index + 1}
+                      </span>
+                      {entry.label}
+                    </li>
                   );
                 })}
               </ol>
@@ -3067,6 +3211,7 @@ export const SharedPos = ({
                     <div style={{ position: "relative" }}>
                     <div style={{ display: "flex", gap: 8 }}>
                       <input
+                        className="pos-tr pos-focus"
                         style={s.field}
                         value={customerSearch}
                         placeholder="Search by name, email or phone"
@@ -3086,13 +3231,17 @@ export const SharedPos = ({
                       <button
                         type="button"
                         onClick={openNewCustomer}
+                        className="pos-tr pos-hov-alt"
                         style={{
                           ...s.ghostButton,
                           width: 48,
                           padding: 0,
                           fontSize: 20,
                           color: theme.accent,
-                          height: 42,
+                          height: 46,
+                          borderRadius: 12,
+                          border: `1.5px solid ${theme.border}`,
+                          background: theme.surfaceAlt,
                         }}
                       >
                         +
@@ -3215,7 +3364,8 @@ export const SharedPos = ({
                   >
                     <button
                       type="button"
-                      style={{ ...s.ghostButton, height: 44 }}
+                      className="pos-tr pos-hov-alt"
+                      style={s.footerSecondary}
                       onClick={() => setCheckoutOpen(false)}
                     >
                       Cancel
@@ -3224,8 +3374,9 @@ export const SharedPos = ({
                       type="button"
                       disabled={!customer || busy}
                       onClick={() => setCheckoutStep("shipping")}
+                      className="pos-tr pos-hov-accent pos-press pos-btn-disabled"
                       style={{
-                        ...s.primaryButton,
+                        ...s.footerPrimary,
                         opacity: !customer || busy ? 0.55 : 1,
                       }}
                     >
@@ -3248,9 +3399,9 @@ export const SharedPos = ({
                       style={{
                         display: "grid",
                         gap: 8,
-                        padding: 14,
-                        borderRadius: 13,
-                        border: `1.5px solid ${theme.border}`,
+                        padding: 16,
+                        borderRadius: 15,
+                        border: `1.5px solid ${theme.borderSoft}`,
                       }}
                     >
                       <span style={{ fontSize: 13, fontWeight: 700, color: theme.ink }}>
@@ -3347,16 +3498,17 @@ export const SharedPos = ({
                           key={option.value}
                           disabled={busy}
                           onClick={() => void changeFulfilment(option.value)}
+                          className="pos-tr"
                           style={{
                             display: "grid",
-                            gap: 4,
+                            gap: 3,
                             minHeight: 76,
-                            padding: "12px 14px",
+                            padding: 16,
                             textAlign: "left",
-                            borderRadius: 13,
+                            borderRadius: 15,
                             cursor: busy ? "not-allowed" : "pointer",
                             fontFamily: uiFont,
-                            border: `1.5px solid ${active ? theme.accent : theme.border}`,
+                            border: `1.5px solid ${active ? theme.accent : theme.borderSoft}`,
                             background: active
                               ? theme.accentSoft
                               : theme.surface,
@@ -3364,14 +3516,14 @@ export const SharedPos = ({
                         >
                           <span
                             style={{
-                              fontSize: 14,
-                              fontWeight: 800,
-                              color: active ? theme.accentDeep : theme.ink,
+                              fontSize: 15,
+                              fontWeight: 700,
+                              color: theme.ink,
                             }}
                           >
                             {option.title}
                           </span>
-                          <span style={{ fontSize: 11.5, color: theme.muted }}>
+                          <span style={{ fontSize: 13, lineHeight: 1.4, color: theme.muted }}>
                             {option.note}
                           </span>
                         </button>
@@ -3384,9 +3536,9 @@ export const SharedPos = ({
                       style={{
                         display: "grid",
                         gap: 8,
-                        padding: 12,
-                        borderRadius: 12,
-                        border: `1px solid ${theme.border}`,
+                        padding: 16,
+                        borderRadius: 15,
+                        border: `1.5px solid ${theme.borderSoft}`,
                         background: theme.surfaceAlt,
                       }}
                     >
@@ -3411,6 +3563,7 @@ export const SharedPos = ({
                         </span>
                       )}
                       <input
+                        className="pos-tr pos-focus"
                         style={s.field}
                         placeholder="Unit, suite or buzzer (optional)"
                         value={deliveryAddress.line2}
@@ -3429,6 +3582,7 @@ export const SharedPos = ({
                         }}
                       >
                         <input
+                          className="pos-tr pos-focus"
                           style={s.field}
                           placeholder="City"
                           value={deliveryAddress.city}
@@ -3440,6 +3594,7 @@ export const SharedPos = ({
                           }
                         />
                         <input
+                          className="pos-tr pos-focus"
                           style={s.field}
                           placeholder="Province / state"
                           value={deliveryAddress.state}
@@ -3459,6 +3614,7 @@ export const SharedPos = ({
                         }}
                       >
                         <input
+                          className="pos-tr pos-focus"
                           style={s.field}
                           placeholder="Postal / ZIP code"
                           value={deliveryAddress.postalCode}
@@ -3470,6 +3626,7 @@ export const SharedPos = ({
                           }
                         />
                         <select
+                          className="pos-tr pos-focus"
                           style={s.field}
                           value={deliveryAddress.countryCode}
                           onChange={(event) =>
@@ -3498,7 +3655,8 @@ export const SharedPos = ({
                   >
                     <button
                       type="button"
-                      style={{ ...s.ghostButton, height: 44 }}
+                      className="pos-tr pos-hov-alt"
+                      style={s.footerSecondary}
                       onClick={() => setCheckoutStep("customer")}
                     >
                       Back
@@ -3507,8 +3665,9 @@ export const SharedPos = ({
                       type="button"
                       disabled={!deliveryComplete || busy}
                       onClick={() => setCheckoutStep("details")}
+                      className="pos-tr pos-hov-accent pos-press pos-btn-disabled"
                       style={{
-                        ...s.primaryButton,
+                        ...s.footerPrimary,
                         opacity: !deliveryComplete || busy ? 0.55 : 1,
                       }}
                     >
@@ -3533,6 +3692,7 @@ export const SharedPos = ({
                         <label style={{ display: "grid", gap: 5 }}>
                           <span style={s.label}>DELIVERY DATE</span>
                           <input
+                            className="pos-tr pos-focus"
                             style={s.field}
                             type="date"
                             value={orderDetails.scheduledFor}
@@ -3547,6 +3707,7 @@ export const SharedPos = ({
                         <label style={{ display: "grid", gap: 5 }}>
                           <span style={s.label}>ENTRANCE DOOR</span>
                           <select
+                            className="pos-tr pos-focus"
                             style={s.field}
                             value={orderDetails.entranceDoor}
                             onChange={(event) =>
@@ -3567,6 +3728,7 @@ export const SharedPos = ({
                         <label style={{ display: "grid", gap: 5 }}>
                           <span style={s.label}>LEVEL</span>
                           <select
+                            className="pos-tr pos-focus"
                             style={s.field}
                             value={orderDetails.entranceLevel}
                             onChange={(event) =>
@@ -3590,6 +3752,7 @@ export const SharedPos = ({
                         <label style={{ display: "grid", gap: 5 }}>
                           <span style={s.label}>STEPS OUTSIDE HOME</span>
                           <input
+                            className="pos-tr pos-focus"
                             style={s.field}
                             type="number"
                             min={0}
@@ -3609,6 +3772,7 @@ export const SharedPos = ({
                         <label style={{ display: "grid", gap: 5 }}>
                           <span style={s.label}>STEPS INSIDE HOME</span>
                           <input
+                            className="pos-tr pos-focus"
                             style={s.field}
                             type="number"
                             min={0}
@@ -3690,6 +3854,7 @@ export const SharedPos = ({
                           Enter one step per line. The slip numbers the steps.
                         </span>
                         <textarea
+                          className="pos-tr pos-focus"
                           style={{ ...s.field, minHeight: 82, padding: 11 }}
                           value={orderDetails.deliveryInstructions}
                           placeholder={
@@ -3710,6 +3875,7 @@ export const SharedPos = ({
                       <label style={{ display: "grid", gap: 5 }}>
                         <span style={s.label}>PICKUP DATE</span>
                         <input
+                          className="pos-tr pos-focus"
                           style={s.field}
                           type="date"
                           value={orderDetails.scheduledFor}
@@ -3727,6 +3893,7 @@ export const SharedPos = ({
                           Enter one step per line. The slip numbers the steps.
                         </span>
                         <textarea
+                          className="pos-tr pos-focus"
                           style={{ ...s.field, minHeight: 82, padding: 11 }}
                           value={orderDetails.pickupInstructions}
                           placeholder={
@@ -3745,6 +3912,7 @@ export const SharedPos = ({
                   <label style={{ display: "grid", gap: 5 }}>
                     <span style={s.label}>NOTE (OPTIONAL)</span>
                     <textarea
+                      className="pos-tr pos-focus"
                       style={{ ...s.field, minHeight: 68, padding: 11 }}
                       value={orderDetails.orderNote}
                       placeholder="Anything about this order - prints on the invoice."
@@ -3761,9 +3929,9 @@ export const SharedPos = ({
                     style={{
                       display: "grid",
                       gap: 10,
-                      padding: 14,
-                      borderRadius: 14,
-                      border: `1px solid ${theme.border}`,
+                      padding: 16,
+                      borderRadius: 15,
+                      border: `1.5px solid ${theme.borderSoft}`,
                       background: theme.surfaceAlt,
                     }}
                   >
@@ -3789,6 +3957,7 @@ export const SharedPos = ({
                             value={deliveryCharge}
                             placeholder="0.00"
                             onChange={(event) => setDeliveryCharge(event.target.value)}
+                            className="pos-tr pos-focus"
                             style={{ ...s.field, width: 120, textAlign: "right" }}
                           />
                         </div>
@@ -3825,6 +3994,7 @@ export const SharedPos = ({
                           placeholder="Custom charge (e.g. stair carry)"
                           maxLength={120}
                           onChange={(event) => setCustomChargeLabel(event.target.value)}
+                          className="pos-tr pos-focus"
                           style={{ ...s.field, flex: 1 }}
                         />
                         <input
@@ -3834,6 +4004,7 @@ export const SharedPos = ({
                           value={customCharge}
                           placeholder="0.00"
                           onChange={(event) => setCustomCharge(event.target.value)}
+                          className="pos-tr pos-focus"
                           style={{ ...s.field, width: 120, textAlign: "right" }}
                         />
                       </div>
@@ -3879,7 +4050,8 @@ export const SharedPos = ({
                   >
                     <button
                       type="button"
-                      style={{ ...s.ghostButton, height: 44 }}
+                      className="pos-tr pos-hov-alt"
+                      style={s.footerSecondary}
                       onClick={() => setCheckoutStep("shipping")}
                     >
                       Back
@@ -3896,8 +4068,9 @@ export const SharedPos = ({
                       disabled={
                         busy || (amount(customCharge) > 0 && !customChargeLabel.trim())
                       }
+                      className="pos-tr pos-hov-accent pos-press pos-btn-disabled"
                       style={{
-                        ...s.primaryButton,
+                        ...s.footerPrimary,
                         opacity:
                           busy || (amount(customCharge) > 0 && !customChargeLabel.trim())
                             ? 0.55
@@ -3943,7 +4116,8 @@ export const SharedPos = ({
                   >
                     <button
                       type="button"
-                      style={{ ...s.ghostButton, height: 44 }}
+                      className="pos-tr pos-hov-alt"
+                      style={s.footerSecondary}
                       onClick={() => setCheckoutStep("details")}
                     >
                       Back
@@ -3951,7 +4125,8 @@ export const SharedPos = ({
                     {needsSignature ? (
                       <button
                         type="button"
-                        style={s.primaryButton}
+                        className="pos-tr pos-hov-accent pos-press pos-btn-disabled"
+                        style={s.footerPrimary}
                         onClick={() => {
                           setSignatureDraft(signatureData);
                           setSignatureOpen(true);
@@ -3962,7 +4137,8 @@ export const SharedPos = ({
                     ) : (
                       <button
                         type="button"
-                        style={s.primaryButton}
+                        className="pos-tr pos-hov-accent pos-press pos-btn-disabled"
+                        style={s.footerPrimary}
                         onClick={() =>
                           setCheckoutStep(agreementRequired ? "agreement" : "payment")
                         }
@@ -4142,7 +4318,8 @@ export const SharedPos = ({
                   >
                     <button
                       type="button"
-                      style={{ ...s.ghostButton, height: 44 }}
+                      className="pos-tr pos-hov-alt"
+                      style={s.footerSecondary}
                       onClick={() => setCheckoutStep("signature")}
                     >
                       Back
@@ -4150,8 +4327,9 @@ export const SharedPos = ({
                     <button
                       type="button"
                       disabled={!agreementReady || !agreementAccepted}
+                      className="pos-tr pos-hov-accent pos-press pos-btn-disabled"
                       style={{
-                        ...s.primaryButton,
+                        ...s.footerPrimary,
                         opacity: agreementReady && agreementAccepted ? 1 : 0.55,
                       }}
                       onClick={() => setCheckoutStep("payment")}
@@ -4166,10 +4344,10 @@ export const SharedPos = ({
                 <div style={{ display: "grid", gap: 12 }}>
                   <div
                     style={{
-                      borderRadius: 12,
-                      border: `1px solid ${theme.borderSoft}`,
+                      borderRadius: 15,
+                      border: `1.5px solid ${theme.borderSoft}`,
                       background: theme.accentTint,
-                      padding: "11px 13px",
+                      padding: 16,
                       display: "grid",
                       gap: 6,
                       fontSize: 13.5,
@@ -4199,9 +4377,11 @@ export const SharedPos = ({
                           key={option.value}
                           aria-pressed={active}
                           onClick={() => setPaymentMethod(option.value)}
+                          className={active ? "pos-tr" : "pos-tr pos-hov-alt"}
                           style={{
-                            minHeight: 48,
+                            minHeight: 52,
                             borderRadius: 12,
+                            lineHeight: 1.15,
                             padding: "0 8px",
                             cursor: "pointer",
                             border: `1.5px solid ${active ? theme.accent : theme.border}`,
@@ -4228,9 +4408,9 @@ export const SharedPos = ({
                       style={{
                         display: "grid",
                         gap: 9,
-                        borderRadius: 12,
-                        border: `1px solid ${theme.borderSoft}`,
-                        padding: "11px 13px",
+                        borderRadius: 15,
+                        border: `1.5px solid ${theme.borderSoft}`,
+                        padding: 16,
                       }}
                     >
                       {canTakeDeposit && (
@@ -4239,6 +4419,7 @@ export const SharedPos = ({
                             TAKING NOW — LEAVE EMPTY FOR THE FULL {money(amountDue)}
                           </span>
                           <input
+                            className="pos-tr pos-focus"
                             style={s.field}
                             type="number"
                             min={0}
@@ -4257,6 +4438,7 @@ export const SharedPos = ({
                         <label style={{ display: "grid", gap: 5 }}>
                           <span style={s.label}>CASH COUNTED OUT</span>
                           <input
+                            className="pos-tr pos-focus"
                             style={s.field}
                             type="number"
                             min={0}
@@ -4319,7 +4501,8 @@ export const SharedPos = ({
                   <div style={{ display: "flex", gap: 10 }}>
                     <button
                       type="button"
-                      style={{ ...s.ghostButton, width: 120, height: 52 }}
+                      className="pos-tr pos-hov-alt"
+                      style={s.footerSecondary}
                       onClick={() =>
                         setCheckoutStep(agreementRequired ? "agreement" : "signature")
                       }
@@ -4330,11 +4513,9 @@ export const SharedPos = ({
                       type="button"
                       disabled={checkoutDisabled}
                       onClick={completeCheckout}
+                      className="pos-tr pos-hov-accent pos-press pos-btn-disabled"
                       style={{
-                        ...s.primaryButton,
-                        flex: 1,
-                        height: 52,
-                        fontSize: 16,
+                        ...s.footerPrimary,
                         opacity: checkoutDisabled ? 0.55 : 1,
                       }}
                     >
@@ -4358,6 +4539,7 @@ export const SharedPos = ({
           aria-label="Customer signature"
         >
           <div
+            className="pos-pop-in"
             style={{
               ...s.modal,
               /*
@@ -4367,15 +4549,15 @@ export const SharedPos = ({
                * keeps it inside a narrow tablet.
                */
               width: "min(920px, 100%)",
-              borderRadius: 22,
-              padding: 22,
+              padding: 16,
             }}
           >
             <h2
               style={{
                 margin: "0 0 4px",
-                fontSize: 20,
+                fontSize: 21,
                 fontWeight: 800,
+                letterSpacing: "-.02em",
                 color: theme.ink,
               }}
             >
@@ -4420,7 +4602,8 @@ export const SharedPos = ({
             >
               <button
                 type="button"
-                style={{ ...s.ghostButton, height: 44 }}
+                className="pos-tr pos-hov-alt"
+                style={s.modalSecondary}
                 onClick={() => setSignatureOpen(false)}
               >
                 Cancel
@@ -4433,8 +4616,9 @@ export const SharedPos = ({
                   setSignatureOpen(false);
                   setCheckoutStep(agreementRequired ? "agreement" : "payment");
                 }}
+                className="pos-tr pos-hov-accent pos-press pos-btn-disabled"
                 style={{
-                  ...s.primaryButton,
+                  ...s.modalPrimary,
                   opacity: signatureDraft ? 1 : 0.55,
                 }}
               >
@@ -4453,18 +4637,19 @@ export const SharedPos = ({
           aria-label="Confirm logout"
         >
           <div
+            className="pos-pop-in"
             style={{
               ...s.modal,
               width: "min(440px, 100%)",
-              borderRadius: 18,
-              padding: 22,
+              padding: 16,
             }}
           >
             <h2
               style={{
                 margin: "0 0 7px",
-                fontSize: 19,
+                fontSize: 21,
                 fontWeight: 800,
+                letterSpacing: "-.02em",
                 color: theme.ink,
               }}
             >
@@ -4491,14 +4676,16 @@ export const SharedPos = ({
             >
               <button
                 type="button"
-                style={{ ...s.ghostButton, height: 42 }}
+                className="pos-tr pos-hov-alt"
+                style={s.modalSecondary}
                 onClick={() => setLogoutConfirmOpen(false)}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                style={{ ...s.primaryButton, height: 42 }}
+                className="pos-tr pos-hov-accent pos-press pos-btn-disabled"
+                style={s.modalPrimary}
                 onClick={onUnauthorized}
               >
                 Logout
@@ -4540,11 +4727,11 @@ export const SharedPos = ({
             aria-modal="true"
             aria-label="Extended warranty"
           >
-            <div style={{ ...s.modal, width: "min(640px, 100%)", borderRadius: 18, padding: 22 }}>
-              <h2 style={{ margin: "0 0 4px", fontSize: 19, fontWeight: 800, color: theme.ink }}>
+            <div className="pos-pop-in" style={{ ...s.modal, width: "min(640px, 100%)", padding: 16 }}>
+              <h2 style={{ margin: "0 0 4px", fontSize: 21, fontWeight: 800, letterSpacing: "-.02em", color: theme.ink }}>
                 Extended warranty
               </h2>
-              <p style={{ margin: "0 0 14px", fontSize: 12.5, color: theme.muted }}>
+              <p style={{ margin: "0 0 14px", fontSize: 13.5, color: theme.muted }}>
                 For {target.name}. Charged once with this rental and printed on the invoice.
               </p>
               {plans.length === 0 ? (
@@ -4590,14 +4777,16 @@ export const SharedPos = ({
                 <button
                   type="button"
                   disabled={busy || !target.warranty}
-                  style={{ ...s.ghostButton, height: 42, opacity: target.warranty ? 1 : 0.5 }}
+                  className="pos-tr pos-hov-alt"
+                  style={{ ...s.modalSecondary, opacity: target.warranty ? 1 : 0.5 }}
                   onClick={() => void chooseWarranty(target.id, null)}
                 >
                   No warranty on this item
                 </button>
                 <button
                   type="button"
-                  style={{ ...s.primaryButton, height: 42 }}
+                  className="pos-tr pos-hov-accent pos-press pos-btn-disabled"
+                  style={s.modalPrimary}
                   onClick={() => setWarrantyLineId(null)}
                 >
                   Done
@@ -4616,25 +4805,26 @@ export const SharedPos = ({
           aria-label="Order item note"
         >
           <div
+            className="pos-pop-in"
             style={{
               ...s.modal,
               width: "min(500px, 100%)",
-              borderRadius: 18,
-              padding: 22,
+              padding: 16,
             }}
           >
             <h2
               style={{
                 margin: "0 0 5px",
-                fontSize: 19,
+                fontSize: 21,
                 fontWeight: 800,
+                letterSpacing: "-.02em",
                 color: theme.ink,
               }}
             >
               Item note
             </h2>
             <p
-              style={{ margin: "0 0 13px", fontSize: 12.5, color: theme.muted }}
+              style={{ margin: "0 0 13px", fontSize: 13.5, color: theme.muted }}
             >
               This note stays visible on the item card and prints with the item.
             </p>
@@ -4663,7 +4853,8 @@ export const SharedPos = ({
             >
               <button
                 type="button"
-                style={{ ...s.ghostButton, height: 42 }}
+                className="pos-tr pos-hov-alt"
+                style={s.modalSecondary}
                 onClick={() => {
                   setNoteLineId(null);
                   setNoteDraft("");
@@ -4674,8 +4865,9 @@ export const SharedPos = ({
               <button
                 type="button"
                 disabled={busy}
+                className="pos-tr pos-hov-accent pos-press pos-btn-disabled"
                 style={{
-                  ...s.primaryButton,
+                  ...s.modalPrimary,
                   height: 42,
                   opacity: busy ? 0.55 : 1,
                 }}
@@ -5247,8 +5439,10 @@ const OrderLineCard = ({
             display: "grid",
             placeItems: "center",
             background: theme.surfaceMuted,
-            backgroundImage: image ? `url("${image}")` : undefined,
-            backgroundSize: "contain",
+            backgroundImage: image
+              ? `url("${image}")`
+              : `repeating-linear-gradient(135deg, #E7ECE9 0 6px, ${theme.surfaceMuted} 6px 12px)`,
+            backgroundSize: image ? "contain" : undefined,
             backgroundPosition: "center",
             backgroundRepeat: "no-repeat",
           }}
@@ -5363,8 +5557,9 @@ const OrderLineCard = ({
           <div style={{ minWidth: 0 }}>
             <div
               style={{
-                fontSize: 10.5,
+                fontSize: 11,
                 fontWeight: 800,
+                letterSpacing: ".04em",
                 color: theme.accentDeep,
               }}
             >
@@ -5422,6 +5617,7 @@ const OrderLineCard = ({
           type="button"
           disabled={busy}
           onClick={onNote}
+          className="pos-tr pos-hov-alt pos-btn-disabled"
           style={{
             ...lineAction(theme),
             flex: 1,
@@ -5439,6 +5635,7 @@ const OrderLineCard = ({
             disabled={busy}
             onClick={onWarranty}
             title={line.warranty ? "Change or remove the warranty" : "Add an extended warranty"}
+            className="pos-tr pos-hov-alt pos-btn-disabled"
             style={{
               ...lineAction(theme),
               flex: 1,
@@ -5463,6 +5660,7 @@ const OrderLineCard = ({
             onClick={onAskRemove}
             aria-label={`Remove ${line.name} from the order`}
             title="Remove this line"
+            className="pos-tr pos-hov-alt pos-btn-disabled"
             style={{
               ...lineAction(theme),
               width: 36,
@@ -5512,13 +5710,14 @@ const OrderLineCard = ({
                 <button
                   type="button"
                   onClick={onCancelRemove}
-                  style={{ ...lineAction(theme), height: 32 }}
+                  className="pos-tr pos-hov-alt" style={{ ...lineAction(theme), height: 32 }}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={onRemove}
+                  className="pos-tr"
                   style={{
                     ...lineAction(theme),
                     height: 32,
@@ -5702,9 +5901,9 @@ const LineCharges = ({
           >
             <span
               style={{
-                fontSize: 10,
+                fontSize: 11,
                 fontWeight: 800,
-                letterSpacing: ".06em",
+                letterSpacing: ".04em",
                 color: theme.mutedLight,
               }}
             >
@@ -5728,9 +5927,9 @@ const LineCharges = ({
         <>
           <div
             style={{
-              fontSize: 10,
+              fontSize: 11,
               fontWeight: 800,
-              letterSpacing: ".06em",
+              letterSpacing: ".04em",
               color: theme.mutedLight,
               marginTop: rental ? 3 : 0,
             }}
@@ -5824,9 +6023,9 @@ const PaymentSummary = ({
   );
   const creditUnused = Math.max(0, (cart.creditTotal ?? 0) - creditApplied);
   const sectionLabel: React.CSSProperties = {
-    fontSize: 9.5,
-    fontWeight: 800,
-    letterSpacing: ".08em",
+    fontSize: 10.5,
+    fontWeight: 700,
+    letterSpacing: ".1em",
     color: theme.mutedLight,
     marginTop: 2,
   };
@@ -5840,7 +6039,7 @@ const PaymentSummary = ({
   );
 
   return (
-    <div style={{ display: "grid", gap: compact ? 5 : 6 }}>
+    <div style={{ display: "grid", gap: 6 }}>
       <div style={sectionLabel}>PAYMENT BREAKDOWN</div>
       {cart.discountTotal > 0 && (
         <Row
@@ -5959,14 +6158,21 @@ const PaymentSummary = ({
           gap: 10,
         }}
       >
-        <span style={{ fontSize: 14, fontWeight: 800, color: theme.ink }}>
+        <span
+          style={{
+            fontSize: 16,
+            fontWeight: 800,
+            letterSpacing: "-.01em",
+            color: theme.ink,
+          }}
+        >
           Grand Total
         </span>
         <span
           style={{
-            fontSize: compact ? 20 : 22,
+            fontSize: 30,
             fontWeight: 800,
-            letterSpacing: "-.02em",
+            letterSpacing: "-.03em",
             color: theme.accent,
           }}
         >
@@ -6094,8 +6300,11 @@ const ProductTile = ({
           placeItems: "center",
           overflow: "hidden",
           background: theme.surfaceMuted,
-          backgroundImage: image ? `url("${image}")` : undefined,
-          backgroundSize: "contain",
+          // AO: the empty slot is hatched, not flat.
+          backgroundImage: image
+            ? `url("${image}")`
+            : `repeating-linear-gradient(135deg, #E7ECE9 0 8px, ${theme.surfaceMuted} 8px 16px)`,
+          backgroundSize: image ? "contain" : undefined,
           backgroundPosition: "center",
           backgroundRepeat: "no-repeat",
         }}
@@ -6245,6 +6454,7 @@ const ProductTile = ({
           type="button"
           disabled={out}
           onClick={() => onChoose(product)}
+          className={out ? "pos-tr" : "pos-tr pos-hov-accent pos-press"}
           style={{
             display: "flex",
             alignItems: "center",

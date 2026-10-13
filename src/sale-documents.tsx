@@ -69,24 +69,24 @@ export const PosSaleDocuments = ({ document, theme, onClose }: {
 	return (
 		<div role="dialog" aria-modal="true" aria-label="Transaction complete"
 			style={{
-				position: "fixed", inset: 0, background: "rgba(10,25,20,.44)",
+				position: "fixed", inset: 0, background: "rgba(0,0,0,.6)",
 				display: "grid", placeItems: "center", zIndex: 1200, padding: 16,
 			}}>
-			<div style={{
-				width: "min(600px, 100%)", background: theme.surface, borderRadius: 18,
-				border: `1px solid ${theme.borderSoft}`, boxShadow: "0 24px 60px rgba(16,22,20,.22)",
+			<div className="pos-pop-in" style={{
+				width: "min(600px, 100%)", background: theme.surface, borderRadius: 22,
+				boxShadow: "0 1px 3px rgba(0,0,0,.05), 0 36px 28px -7px rgba(0,0,0,.05), 0 17px 17px -7px rgba(0,0,0,.04)",
 				display: "flex", flexDirection: "column", maxHeight: "calc(100vh - 32px)", fontFamily: uiFont,
 			}}>
-				<div style={{ padding: "20px 22px 14px", borderBottom: `1px solid ${theme.borderSoft}` }}>
-					<h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: theme.ink }}>
+				<div style={{ padding: 16 }}>
+					<h2 style={{ margin: 0, fontSize: 21, fontWeight: 800, letterSpacing: "-.02em", color: theme.ink }}>
 						Print documents
 					</h2>
-					<div style={{ marginTop: 4, fontSize: 13, color: theme.muted }}>
+					<div style={{ marginTop: 3, fontSize: 13.5, color: theme.muted }}>
 						{`${document.kind === "RENTAL" ? "Agreement" : "Invoice"} ${document.number}`}
 					</div>
 				</div>
 
-				<div style={{ padding: 22, display: "grid", gap: 10, overflowY: "auto" }}>
+				<div style={{ padding: "0 16px 16px", display: "grid", gap: 10, overflowY: "auto" }}>
 					{blocked && (
 						<div style={{
 							padding: "9px 11px", borderRadius: 10, fontSize: 12.5,
@@ -133,7 +133,7 @@ export const PosSaleDocuments = ({ document, theme, onClose }: {
 					))}
 				</div>
 
-				<div style={{ display: "flex", justifyContent: "flex-end", padding: "0 22px 22px" }}>
+				<div style={{ display: "flex", justifyContent: "flex-end", padding: "0 16px 16px" }}>
 					<button type="button" onClick={onClose}
 						style={{
 							height: 46, borderRadius: 13, padding: "0 22px", cursor: "pointer",

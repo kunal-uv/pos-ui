@@ -25,6 +25,7 @@ export const TillLoader = ({
   <div
     role="status"
     aria-live="polite"
+    className="pos-root"
     style={{
       height,
       minHeight: 280,
