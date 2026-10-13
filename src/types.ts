@@ -326,5 +326,24 @@ export interface CommissionPreview {
 
 /** GET /carts/:id/agreement */
 export type PosAgreement =
-  | { available: true; templateId: string; templateName: string; html: string }
+  | {
+      available: true;
+      templateId: string;
+      templateName: string;
+      html: string;
+      /**
+       * ! Declared on BOTH branches, as `undefined` here.
+       *
+       * ! This package is consumed as source, so it compiles under each host's
+       * ! own tsconfig — and the Rent Buddyz admin builds with `strict: false`.
+       * ! Without `strictNullChecks`, TypeScript does not narrow a discriminated
+       * ! union on a boolean literal, so `!agreement.available` leaves the type
+       * ! as the whole union and reading `.message` off it fails to compile in
+       * ! the host while compiling cleanly here. Present-but-undefined keeps the
+       * ! access legal in both modes without weakening the union for callers
+       * ! that do narrow.
+       */
+      reason?: undefined;
+      message?: undefined;
+    }
   | { available: false; reason: string; message: string };
