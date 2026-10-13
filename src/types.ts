@@ -55,6 +55,8 @@ export interface PosSession {
      */
     cashChange?: boolean;
     signature: boolean;
+    /** The till shows a mandatory rent-agreement step between Signature and Payment. */
+    agreement?: boolean;
     /** The New Customer form proves a new customer's email with an emailed code. */
     customerEmailVerification?: boolean;
     fulfilment: Array<"PICKUP" | "DELIVERY">;
@@ -321,3 +323,8 @@ export interface CommissionPreview {
   currency?: string;
   components: CommissionPreviewComponent[];
 }
+
+/** GET /carts/:id/agreement */
+export type PosAgreement =
+  | { available: true; templateId: string; templateName: string; html: string }
+  | { available: false; reason: string; message: string };

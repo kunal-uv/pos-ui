@@ -64,8 +64,10 @@ export const posLayout = {
 export const posTileColumns = `repeat(auto-fill,minmax(${posLayout.tileMinWidth}px,1fr))`;
 
 /** Small numerals - serials, counts, SKUs - read better spaced evenly. */
-export const monoFont = 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
-export const uiFont = '"Plus Jakarta Sans", Inter, system-ui, -apple-system, sans-serif';
+export const monoFont =
+	'var(--font-plex-mono, "IBM Plex Mono"), "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace';
+export const uiFont =
+	'var(--font-manrope, "Manrope"), "Manrope", system-ui, -apple-system, sans-serif';
 
 const neutral = {
 	bg: "#EDF1EF",

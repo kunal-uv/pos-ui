@@ -99,22 +99,22 @@ export const NewCustomerForm = ({
 
   const styles = useMemo(() => {
     const field: React.CSSProperties = {
-      boxSizing: "border-box", width: "100%", height: 42, border: `1px solid ${theme.border}`,
-      borderRadius: 10, padding: "0 12px", fontSize: 14, background: theme.surface,
+      boxSizing: "border-box", width: "100%", height: 46, border: `1.5px solid ${theme.border}`,
+      borderRadius: 12, padding: "0 14px", fontSize: 15, fontWeight: 600, background: theme.surfaceAlt,
       color: theme.ink, fontFamily: uiFont, outline: "none",
     };
     return {
       field,
       invalid: { ...field, borderColor: theme.danger } as React.CSSProperties,
       label: { display: "block", marginBottom: 5, fontSize: 11.5, fontWeight: 800,
-        letterSpacing: ".05em", textTransform: "uppercase", color: theme.muted } as React.CSSProperties,
-      card: { display: "grid", gap: 12, padding: 14, borderRadius: 14,
-        background: theme.surfaceMuted, border: `1px solid ${theme.borderSoft}` } as React.CSSProperties,
-      section: { fontSize: 11.5, fontWeight: 800, letterSpacing: ".06em",
+        letterSpacing: ".08em", textTransform: "uppercase", color: theme.mutedLight } as React.CSSProperties,
+      card: { display: "grid", gap: 12, padding: 16, borderRadius: 15,
+        background: theme.surfaceMuted, border: `1.5px solid ${theme.borderSoft}` } as React.CSSProperties,
+      section: { fontSize: 11.5, fontWeight: 800, letterSpacing: ".08em",
         color: theme.mutedLight, textTransform: "uppercase" } as React.CSSProperties,
       error: { marginTop: 4, fontSize: 12, color: theme.danger } as React.CSSProperties,
-      ghost: { height: 40, borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.surface,
-        color: theme.inkSoft, fontSize: 13, fontWeight: 700, padding: "0 14px", cursor: "pointer",
+      ghost: { height: 46, borderRadius: 12, border: `1.5px solid ${theme.border}`, background: theme.surfaceAlt,
+        color: theme.inkSoft, fontSize: 15, fontWeight: 700, padding: "0 20px", cursor: "pointer",
         fontFamily: uiFont } as React.CSSProperties,
       link: { background: "none", border: 0, padding: 0, color: theme.accentDeep, fontWeight: 700,
         fontSize: 13, cursor: "pointer", fontFamily: uiFont } as React.CSSProperties,
@@ -291,21 +291,21 @@ export const NewCustomerForm = ({
 
   return (
     <div
-      style={{ position: "fixed", inset: 0, background: "rgba(10,25,20,.44)", display: "grid",
+      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "grid",
         placeItems: "center", zIndex: 1100, padding: 16 }}
       role="dialog" aria-modal="true" aria-label="New customer"
     >
-      <div style={{ background: theme.surface, borderRadius: 18, border: `1px solid ${theme.borderSoft}`,
-        boxShadow: "0 24px 60px rgba(16,22,20,.22)", width: "min(660px, 100%)", maxHeight: "calc(100vh - 32px)",
+      <div className="pos-pop-in" style={{ background: theme.surface, borderRadius: 22,
+        boxShadow: "0 1px 3px rgba(0,0,0,.05), 0 36px 28px -7px rgba(0,0,0,.05), 0 17px 17px -7px rgba(0,0,0,.04)", width: "min(660px, 100%)", maxHeight: "calc(100vh - 32px)",
         display: "flex", flexDirection: "column", fontFamily: uiFont }}>
-        <div style={{ padding: "20px 24px 6px" }}>
-          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: theme.ink }}>New Customer</h2>
-          <p style={{ margin: "4px 0 0", fontSize: 13, color: theme.muted }}>
+        <div style={{ padding: "16px 16px 6px" }}>
+          <h2 style={{ margin: 0, fontSize: 21, fontWeight: 800, letterSpacing: "-.02em", color: theme.ink }}>New Customer</h2>
+          <p style={{ margin: "3px 0 0", fontSize: 13.5, color: theme.muted }}>
             Only first name, last name, phone and postal code are needed.
           </p>
         </div>
 
-        <div style={{ padding: "14px 24px", overflowY: "auto", display: "grid", gap: 14 }}>
+        <div style={{ padding: "10px 16px 14px", overflowY: "auto", display: "grid", gap: 14 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
             <div>
               <label style={styles.label} htmlFor="nc-first">First Name <span style={{ color: theme.danger }}>*</span></label>
@@ -463,12 +463,11 @@ export const NewCustomerForm = ({
           )}
         </div>
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, padding: "12px 24px 20px",
-          borderTop: `1px solid ${theme.borderSoft}` }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, padding: "0 16px 16px" }}>
           <button type="button" style={styles.ghost} onClick={onClose} disabled={saving}>Cancel</button>
           <button type="button" disabled={!ready} onClick={save}
-            style={{ height: 40, minWidth: 150, borderRadius: 10, border: 0, fontFamily: uiFont, fontSize: 13.5,
-              fontWeight: 800, color: "#fff", cursor: ready ? "pointer" : "not-allowed",
+            style={{ height: 46, minWidth: 150, borderRadius: 12, border: 0, fontFamily: uiFont, fontSize: 15,
+              fontWeight: 700, color: "#fff", cursor: ready ? "pointer" : "not-allowed",
               background: ready ? theme.accent : "#C9D3CE" }}>
             {saving ? "Saving…" : "Save Customer"}
           </button>
