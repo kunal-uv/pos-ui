@@ -273,6 +273,35 @@ type CheckoutStep =
   | "agreement"
   | "payment";
 
+/**
+ * Typography for the rental agreement text. The agreement arrives as plain
+ * semantic HTML from the template editor, and the till has no global styles
+ * for headings, lists or tables, so without this it reads as one flat block.
+ */
+const AGREEMENT_DOCUMENT_CSS = `
+.pos-agreement-doc > :first-child { margin-top: 0; }
+.pos-agreement-doc h1 { font-size: 20px; font-weight: 800; margin: 20px 0 10px; text-align: center; }
+.pos-agreement-doc h2 { font-size: 16px; font-weight: 800; margin: 20px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #DDE5E4; }
+.pos-agreement-doc h3 { font-size: 14.5px; font-weight: 700; margin: 16px 0 6px; }
+.pos-agreement-doc h4, .pos-agreement-doc h5, .pos-agreement-doc h6 { font-size: 13.5px; font-weight: 700; margin: 12px 0 4px; }
+.pos-agreement-doc p { margin: 0 0 10px; }
+.pos-agreement-doc ul, .pos-agreement-doc ol { margin: 0 0 12px; padding-left: 24px; }
+.pos-agreement-doc ul { list-style: disc; }
+.pos-agreement-doc ol { list-style: decimal; }
+.pos-agreement-doc li { margin: 0 0 4px; }
+.pos-agreement-doc li > p { margin: 0; }
+.pos-agreement-doc strong, .pos-agreement-doc b { font-weight: 700; }
+.pos-agreement-doc em, .pos-agreement-doc i { font-style: italic; }
+.pos-agreement-doc u { text-decoration: underline; }
+.pos-agreement-doc a { color: #1e7a6e; text-decoration: underline; }
+.pos-agreement-doc blockquote { margin: 0 0 12px; padding: 6px 14px; border-left: 3px solid #299c8e; background: #f2fbfa; }
+.pos-agreement-doc hr { border: 0; border-top: 1px solid #DDE5E4; margin: 14px 0; }
+.pos-agreement-doc table { width: 100%; border-collapse: collapse; margin: 6px 0 14px; font-size: 12.5px; }
+.pos-agreement-doc th, .pos-agreement-doc td { border: 1px solid #DDE5E4; padding: 6px 8px; text-align: left; vertical-align: top; }
+.pos-agreement-doc th { background: #F6FAFA; font-weight: 700; }
+.pos-agreement-doc td > p, .pos-agreement-doc th > p { margin: 0; }
+`;
+
 const CHECKOUT_STEPS: Array<{ key: CheckoutStep; label: string }> = [
   { key: "customer", label: "Customer" },
   { key: "shipping", label: "Shipping" },
@@ -2926,7 +2955,7 @@ export const SharedPos = ({
                   Checkout
                 </h2>
                 <span style={{ fontSize: 13.5, color: theme.muted }}>
-                  Customer → Shipping → Details → Signature → Payment
+                  {checkoutSteps.map((entry) => entry.label).join(" → ")}
                 </span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -4041,8 +4070,8 @@ export const SharedPos = ({
                             src={signatureData}
                             alt="Customer signature"
                             style={{
-                              height: 48,
-                              maxWidth: 140,
+                              height: 56,
+                              maxWidth: 180,
                               objectFit: "contain",
                               border: `1px solid ${theme.borderSoft}`,
                               borderRadius: 8,
@@ -4052,19 +4081,21 @@ export const SharedPos = ({
                           />
                         )}
                       </div>
+                      <style>{AGREEMENT_DOCUMENT_CSS}</style>
                       <div
+                        className="pos-agreement-doc"
                         tabIndex={0}
                         role="region"
                         aria-label="Rental agreement terms"
                         style={{
-                          maxHeight: 300,
+                          maxHeight: 340,
                           overflowY: "auto",
                           border: `1px solid ${theme.border}`,
                           borderRadius: 12,
                           background: "#fff",
-                          padding: "12px 14px",
-                          fontSize: 13,
-                          lineHeight: 1.5,
+                          padding: "18px 22px",
+                          fontSize: 13.5,
+                          lineHeight: 1.6,
                           color: theme.ink,
                         }}
                         dangerouslySetInnerHTML={{

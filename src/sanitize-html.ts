@@ -3,8 +3,8 @@
  *
  * Allow-list approach: unknown elements are unwrapped (children kept), dangerous
  * containers are dropped with their content, every `on*` / `style`-free
- * attribute outside a small allow-list is removed, and URLs must be http(s),
- * mailto or tel. Needs a DOM (DOMParser); returns "" when none is available so
+ * attribute outside a small allow-list is removed, `style` is kept only for a
+ * whitelist of harmless CSS properties, and URLs must be http(s), mailto or tel. Needs a DOM (DOMParser); returns "" when none is available so
  * nothing unsanitised is ever rendered (e.g. on the server).
  */
 
@@ -24,6 +24,32 @@ const ALLOWED_TAGS = new Set([
 const ALLOWED_ATTRS = new Set([
   "href", "src", "alt", "title", "colspan", "rowspan", "align", "start",
 ]);
+
+const ALLOWED_CSS = new Set([
+  "text-align", "color", "background-color", "font-weight", "font-style",
+  "font-size", "text-decoration", "line-height", "vertical-align", "width",
+  "min-width", "max-width", "list-style-type", "white-space", "text-indent",
+  "margin", "margin-top", "margin-bottom", "margin-left", "margin-right",
+  "padding", "padding-top", "padding-bottom", "padding-left", "padding-right",
+  "border", "border-top", "border-bottom", "border-left", "border-right",
+  "border-collapse", "border-color", "border-width", "border-style",
+]);
+
+/** Keeps only whitelisted declarations whose value cannot load or run anything. */
+const cleanStyle = (value: string): string =>
+  value
+    .split(";")
+    .map((declaration) => {
+      const at = declaration.indexOf(":");
+      if (at < 0) return "";
+      const property = declaration.slice(0, at).trim().toLowerCase();
+      const body = declaration.slice(at + 1).trim();
+      if (!ALLOWED_CSS.has(property) || !body) return "";
+      if (/url\s*\(|expression|javascript:|@import|[\\<>]/i.test(body)) return "";
+      return `${property}: ${body}`;
+    })
+    .filter(Boolean)
+    .join("; ");
 
 const SAFE_URL = /^(https?:|mailto:|tel:|data:image\/(png|jpe?g|gif|webp);|#|\/|\.)/i;
 
@@ -57,6 +83,12 @@ const clean = (parent: Node): void => {
     }
     for (const attr of Array.from(el.attributes)) {
       const name = attr.name.toLowerCase();
+      if (name === "style") {
+        const kept = cleanStyle(attr.value);
+        if (kept) el.setAttribute("style", kept);
+        else el.removeAttribute("style");
+        continue;
+      }
       if (
         name.startsWith("on") ||
         !ALLOWED_ATTRS.has(name) ||
